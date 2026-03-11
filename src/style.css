@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #080808;
+  --color-card: #0f0f0f;
+  --color-card-hover: #141414;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(255, 255, 255, 0.14);
+  --color-accent: #E8002D;
+  --color-text: #f0f0f0;
+  --color-muted: #888888;
+  --color-muted-light: #aaaaaa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: 'Titillium Web', sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Glass card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 12px;
+}
+
+.glass-card:hover {
+  border-color: var(--color-border-hover);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Skeleton loader */
+.skeleton {
+  background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Route transitions */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.fade-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track { background: var(--color-bg); }
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Nav link active */
+.nav-link-active {
+  color: white !important;
+  border-bottom-color: var(--color-accent) !important;
+}
+
+/* Tyre compounds */
+.tyre-soft { background: #E8002D; }
+.tyre-medium { background: #FFC906; }
+.tyre-hard { background: #fff; color: #000; }
+.tyre-inter { background: #39B54A; }
+.tyre-wet { background: #0067FF; }
+
+/* Team color strips */
+.team-strip {
+  width: 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* Mono font for data */
+.font-data {
+  font-family: 'DM Mono', monospace;
+}
+
+/* Tab styles */
+.tab-btn {
+  padding: 0.5rem 1.25rem;
+  border-bottom: 2px solid transparent;
+  font-weight: 600;
+  font-size: 0.875rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  transition: all 0.2s;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+}
+
+.tab-btn:hover {
+  color: white;
+}
+
+.tab-btn.active {
+  color: white;
+  border-bottom-color: var(--color-accent);
+}
+
+/* Result position badges */
+.pos-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.8rem;
+  font-family: 'DM Mono', monospace;
+}
+
+.pos-1 { background: #FFD700; color: #000; }
+.pos-2 { background: #C0C0C0; color: #000; }
+.pos-3 { background: #CD7F32; color: #000; }
+.pos-default { background: rgba(255,255,255,0.1); color: #fff; }
