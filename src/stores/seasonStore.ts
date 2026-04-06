@@ -5,7 +5,7 @@ import {
   getDriverStandings,
   getConstructorStandings,
   getLastRaceResults,
-  getNextRace
+  getNextRace,
 } from '@/api/ergast'
 import type { ErgastRace, ErgastDriverStanding, ErgastConstructorStanding } from '@/api/ergast'
 
@@ -15,30 +15,72 @@ export const useSeasonStore = defineStore('season', () => {
   const constructorStandings = ref<ErgastConstructorStanding[]>([])
   const lastRace = ref<ErgastRace | null>(null)
   const nextRace = ref<ErgastRace | null>(null)
-  const lastRaceResults = ref<{ race: ErgastRace; results: import('@/api/ergast').ErgastRaceResult[] } | null>(null)
+  const lastRaceResults = ref<{ race: ErgastRace; results: import('@/api/ergast').ErgastRaceResult[] } | null>(
+    null
+  )
   const loading = ref(false)
   const error = ref<string | null>(null)
-  const currentYear = new Date().getFullYear()
+
+  /**
+   * Currently selected season year.
+   * Changing this re-fetches schedule and standings for that year.
+   */
+  const selectedSeason = ref<number>(new Date().getFullYear())
+
+  /**
+   * Seasons available for selection (2023 = earliest with solid OpenF1 coverage).
+   */
+  const availableSeasons = computed(() => {
+    const current = new Date().getFullYear()
+    const seasons: number[] = []
+    for (let y = current; y >= 2023; y--) seasons.push(y)
+    return seasons
+  })
+
+  const isCurrentSeason = computed(() => selectedSeason.value === new Date().getFullYear())
+
+  /** @deprecated Use selectedSeason — kept for gradual migration */
+  const currentYear = computed(() => selectedSeason.value)
 
   const upcomingRaces = computed(() =>
     schedule.value.filter(r => new Date(r.date) >= new Date())
   )
 
-  const pastRaces = computed(() =>
-    schedule.value.filter(r => new Date(r.date) < new Date())
-  )
+  const pastRaces = computed(() => schedule.value.filter(r => new Date(r.date) < new Date()))
 
   async function loadCurrentSeason() {
     loading.value = true
     error.value = null
+    const year = selectedSeason.value
+    const isLiveYear = year === new Date().getFullYear()
     try {
-      const [racesData, driverData, constructorData, lastRaceData, nextRaceData] = await Promise.allSettled([
-        getSeasonRaces(currentYear) as Promise<{ MRData: { RaceTable: { Races: ErgastRace[] } } }>,
-        getDriverStandings() as Promise<{ MRData: { StandingsTable: { StandingsLists: Array<{ DriverStandings: ErgastDriverStanding[] }> } } }>,
-        getConstructorStandings() as Promise<{ MRData: { StandingsTable: { StandingsLists: Array<{ ConstructorStandings: ErgastConstructorStanding[] }> } } }>,
-        getLastRaceResults() as Promise<{ MRData: { RaceTable: { Races: Array<ErgastRace & { Results: import('@/api/ergast').ErgastRaceResult[] }> } } }>,
-        getNextRace() as Promise<{ MRData: { RaceTable: { Races: ErgastRace[] } } }>,
+      const settled = await Promise.allSettled([
+        getSeasonRaces(year) as Promise<{ MRData: { RaceTable: { Races: ErgastRace[] } } }>,
+        getDriverStandings(year) as Promise<{
+          MRData: { StandingsTable: { StandingsLists: Array<{ DriverStandings: ErgastDriverStanding[] }> } }
+        }>,
+        getConstructorStandings(year) as Promise<{
+          MRData: { StandingsTable: { StandingsLists: Array<{ ConstructorStandings: ErgastConstructorStanding[] }> } }
+        }>,
+        ...(isLiveYear
+          ? [
+              getLastRaceResults() as Promise<{
+                MRData: {
+                  RaceTable: {
+                    Races: Array<ErgastRace & { Results: import('@/api/ergast').ErgastRaceResult[] }>
+                  }
+                }
+              }>,
+              getNextRace() as Promise<{ MRData: { RaceTable: { Races: ErgastRace[] } } }>,
+            ]
+          : []),
       ])
+
+      const racesData = settled[0]
+      const driverData = settled[1]
+      const constructorData = settled[2]
+      const lastRaceData = isLiveYear ? settled[3] : null
+      const nextRaceData = isLiveYear ? settled[4] : null
 
       if (racesData.status === 'fulfilled') {
         schedule.value = racesData.value?.MRData?.RaceTable?.Races || []
@@ -54,18 +96,23 @@ export const useSeasonStore = defineStore('season', () => {
         constructorStandings.value = lists?.[0]?.ConstructorStandings || []
       }
 
-      if (lastRaceData.status === 'fulfilled') {
+      if (isLiveYear && lastRaceData?.status === 'fulfilled' && lastRaceData.value) {
         const races = lastRaceData.value?.MRData?.RaceTable?.Races
         if (races && races.length > 0) {
           const race = races[0]
           lastRace.value = race
           lastRaceResults.value = { race, results: race.Results || [] }
         }
+      } else {
+        lastRace.value = null
+        lastRaceResults.value = null
       }
 
-      if (nextRaceData.status === 'fulfilled') {
+      if (isLiveYear && nextRaceData?.status === 'fulfilled' && nextRaceData.value) {
         const races = nextRaceData.value?.MRData?.RaceTable?.Races
         nextRace.value = races?.[0] || null
+      } else {
+        nextRace.value = null
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load season data'
@@ -73,6 +120,18 @@ export const useSeasonStore = defineStore('season', () => {
     } finally {
       loading.value = false
     }
+  }
+
+  function setSelectedSeason(year: number) {
+    if (!availableSeasons.value.includes(year)) return
+    if (selectedSeason.value === year) return
+    selectedSeason.value = year
+    void loadCurrentSeason()
+  }
+
+  /** Sync navbar from route without re-fetching (caller already loaded data). */
+  function syncSelectedSeasonOnly(year: number) {
+    if (availableSeasons.value.includes(year)) selectedSeason.value = year
   }
 
   return {
@@ -86,7 +145,12 @@ export const useSeasonStore = defineStore('season', () => {
     error,
     upcomingRaces,
     pastRaces,
+    selectedSeason,
+    availableSeasons,
+    isCurrentSeason,
     currentYear,
-    loadCurrentSeason
+    loadCurrentSeason,
+    setSelectedSeason,
+    syncSelectedSeasonOnly,
   }
 })

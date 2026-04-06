@@ -23,5 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# Local env file (Anthropic API key)
+# Secrets - never commit (API keys, tokens). Use `.env.example` for placeholders only.
+.env
 .env.local
+.env.*.local

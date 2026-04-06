@@ -3,7 +3,7 @@
     <div class="container">
       <div class="page-header">
         <h1 class="page-title">Teams</h1>
-        <span class="page-sub">{{ seasonStore.currentYear }} Constructor Championship</span>
+        <span class="page-sub">{{ seasonStore.selectedSeason }} Constructor Championship</span>
       </div>
 
       <!-- Loading -->
@@ -16,47 +16,66 @@
         <div
           v-for="standing in seasonStore.constructorStandings"
           :key="standing.Constructor.constructorId"
-          class="team-card glass-card"
+          class="team-accordion glass-card glass-card--interactive"
+          role="link"
+          tabindex="0"
           :style="{ '--team-color': getTeamColor(standing.Constructor.name) }"
+          @click="goTeam(standing.Constructor.name)"
+          @keydown="onTeamCardKey($event, standing.Constructor.name)"
         >
-          <div class="card-color-bar"></div>
-          <div class="card-body">
-            <div class="team-main">
-              <div class="team-position font-data">P{{ standing.position }}</div>
-              <div class="team-name-block">
-                <div class="team-name" :style="{ color: getTeamColor(standing.Constructor.name) }">
-                  {{ standing.Constructor.name }}
-                </div>
-                <div class="team-nationality">{{ standing.Constructor.nationality }}</div>
-              </div>
+          <div class="team-acc-left">
+            <div class="team-acc-bar" />
+            <span class="team-acc-pos">P{{ standing.position }}</span>
+          </div>
+
+          <div class="team-acc-identity">
+            <img
+              v-if="teamImages[standing.Constructor.name]"
+              class="team-acc-logo"
+              :src="teamImages[standing.Constructor.name] || undefined"
+              :alt="standing.Constructor.name"
+            />
+            <div v-else class="team-acc-logo-placeholder">
+              {{ standing.Constructor.name.slice(0, 3).toUpperCase() }}
             </div>
-            <div class="team-stats">
-              <div class="stat">
-                <div class="stat-val font-data">{{ standing.points }}</div>
-                <div class="stat-label">Points</div>
-              </div>
-              <div class="stat">
-                <div class="stat-val font-data">{{ standing.wins }}</div>
-                <div class="stat-label">Wins</div>
-              </div>
-              <div class="stat">
-                <div class="stat-val font-data">
-                  {{ getTeamDrivers(standing.Constructor.name).join(' / ') }}
-                </div>
-                <div class="stat-label">Drivers</div>
-              </div>
+            <div>
+              <div class="team-acc-name">{{ standing.Constructor.name }}</div>
+              <div class="team-acc-nationality">{{ standing.Constructor.nationality }}</div>
             </div>
           </div>
-          <!-- Points bar -->
-          <div class="points-bar">
+
+          <div class="team-acc-right">
+            <div class="team-acc-pts">
+              <span class="stat-number" style="font-size: 36px">{{ standing.points }}</span>
+              <span class="team-acc-pts-suffix">PTS</span>
+            </div>
+
             <div
-              class="points-bar-fill"
-              :style="{
-                width: `${(parseFloat(standing.points) / maxPoints) * 100}%`,
-                background: getTeamColor(standing.Constructor.name)
-              }"
-            ></div>
+              class="team-driver-contrib"
+              v-if="getTeamDriverContributions(standing.Constructor.name, parseFloat(standing.points)).length"
+            >
+              <div
+                v-for="d in getTeamDriverContributions(standing.Constructor.name, parseFloat(standing.points))"
+                :key="d.code"
+                class="contrib-row"
+              >
+                <span class="contrib-code">{{ d.code }}</span>
+                <div class="contrib-bar-track">
+                  <div
+                    class="contrib-bar-fill"
+                    :style="{
+                      width: `${d.percentage}%`,
+                      background: 'var(--team-color)',
+                    }"
+                  />
+                </div>
+                <span class="contrib-pts">{{ d.points }}</span>
+                <span class="contrib-pct">{{ d.percentage }}%</span>
+              </div>
+            </div>
           </div>
+
+          <div class="team-acc-arrow" aria-hidden="true">→</div>
         </div>
       </div>
 
@@ -65,7 +84,7 @@
         <div class="section-header">
           <h2 class="section-title">Points Comparison</h2>
         </div>
-        <div class="glass-card chart-card">
+        <div class="glass-card glass-card--static chart-card">
           <div class="chart-wrapper">
             <Bar v-if="constructorChartData" :data="constructorChartData" :options="constructorChartOptions" />
           </div>
@@ -78,7 +97,7 @@
           <h2 class="section-title">Pit Crew Performance</h2>
           <span class="section-sub">Last Race</span>
         </div>
-        <div class="glass-card">
+        <div class="glass-card glass-card--static">
           <div class="pit-chart-wrapper">
             <Bar v-if="pitChartData" :data="pitChartData" :options="pitChartOptions" />
             <div v-else class="empty-state">No pit data available</div>
@@ -92,7 +111,7 @@
           <h2 class="section-title">Season Story</h2>
           <span class="section-sub">Race results overview</span>
         </div>
-        <div class="glass-card chart-card-lg" v-if="seasonStore.schedule.length">
+        <div class="glass-card glass-card--static chart-card-lg" v-if="seasonStore.schedule.length">
           <div class="race-list">
             <div
               v-for="race in pastRaces"
@@ -118,33 +137,69 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend
 } from 'chart.js'
 import { useSeasonStore } from '@/stores/seasonStore'
 import { getTeamColor, getCircuitFlag } from '@/constants/teams'
+interface DriverContribution {
+  code: string
+  name: string
+  points: number
+  percentage: number
+}
 import SkeletonBlock from '@/components/ui/SkeletonBlock.vue'
+import { getAllTeamImages } from '@/api/wikipedia'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
 const seasonStore = useSeasonStore()
+const router = useRouter()
 
-const maxPoints = computed(() => {
-  const pts = seasonStore.constructorStandings.map(s => parseFloat(s.points))
-  return Math.max(...pts, 1)
-})
+function goTeam(name: string) {
+  router.push(`/teams/${encodeURIComponent(name)}`)
+}
+
+function onTeamCardKey(e: KeyboardEvent, name: string) {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    goTeam(name)
+  }
+}
+
+const teamImages = ref<Record<string, string | null>>({})
 
 const pastRaces = computed(() =>
   seasonStore.schedule.filter(r => new Date(r.date) < new Date())
 )
 
-function getTeamDrivers(teamName: string): string[] {
-  return seasonStore.driverStandings
-    .filter(d => d.Constructors[0]?.name === teamName)
-    .map(d => d.Driver.code)
-    .slice(0, 2)
+/**
+ * Both drivers' points contributions for a constructor (driver standings cross-ref).
+ * Sorted by points descending.
+ */
+function getTeamDriverContributions(
+  constructorName: string,
+  totalPoints: number
+): DriverContribution[] {
+  const teamDrivers = seasonStore.driverStandings.filter(d =>
+    d.Constructors.some(c => c.name === constructorName)
+  )
+
+  return teamDrivers
+    .map(d => {
+      const pts = parseFloat(d.points) || 0
+      return {
+        code: d.Driver.code,
+        name: d.Driver.familyName,
+        points: Math.round(pts),
+        percentage:
+          totalPoints > 0 ? Math.round((pts / totalPoints) * 100) : 0,
+      }
+    })
+    .sort((a, b) => b.points - a.points)
 }
 
 // Constructor chart
@@ -214,7 +269,8 @@ const pitChartData = computed(() => {
     labels: teamAvgs.map(t => t.team.split(' ').pop()),
     datasets: [{
       label: 'Avg Finishing Position (lower is better)',
-      data: teamAvgs.map(t => t.avg.toFixed(1)),
+      // Chart.js expects numeric values, not formatted strings.
+      data: teamAvgs.map(t => Number(t.avg.toFixed(1))),
       backgroundColor: teamAvgs.map(t => getTeamColor(t.team) + 'cc'),
       borderColor: teamAvgs.map(t => getTeamColor(t.team)),
       borderWidth: 1,
@@ -251,6 +307,16 @@ onMounted(() => {
     seasonStore.loadCurrentSeason()
   }
 })
+
+watch(
+  () => seasonStore.constructorStandings,
+  async (standings) => {
+    if (!standings.length) return
+    const names = standings.map(t => t.Constructor.name)
+    teamImages.value = await getAllTeamImages(names)
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
@@ -288,88 +354,187 @@ onMounted(() => {
   gap: 0.875rem;
 }
 
-/* Team Cards */
+/* Team accordion */
 .teams-list {
   display: flex;
   flex-direction: column;
-  gap: 0.875rem;
+  gap: 10px;
 }
 
-.team-card {
+.team-accordion {
+  display: grid;
+  grid-template-columns: 60px minmax(200px, 280px) 1fr 40px;
+  align-items: center;
+  gap: 24px;
+  padding: 20px 24px;
+  cursor: pointer;
+  border-radius: 14px;
+}
+
+.team-acc-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.team-acc-bar {
+  width: 4px;
+  height: 48px;
+  background: var(--team-color);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.team-acc-pos {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--team-color);
+  font-family: 'DM Mono', monospace;
+}
+
+.team-acc-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.team-acc-logo {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px;
+}
+
+.team-acc-logo-placeholder {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--team-color);
+  font-family: 'DM Mono', monospace;
+}
+
+.team-acc-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  font-family: 'Titillium Web', sans-serif;
+}
+
+.team-acc-nationality {
+  font-size: 12px;
+  color: #555;
+  margin-top: 2px;
+}
+
+.team-acc-right {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  min-width: 0;
+}
+
+.team-acc-pts {
+  display: flex;
+  align-items: baseline;
+  flex-shrink: 0;
+}
+
+.team-acc-pts-suffix {
+  font-size: 13px;
+  color: #555;
+  margin-left: 6px;
+}
+
+.team-driver-contrib {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.contrib-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.contrib-code {
+  font-size: 11px;
+  font-weight: 700;
+  color: #666;
+  font-family: 'DM Mono', monospace;
+  width: 36px;
+  flex-shrink: 0;
+}
+
+.contrib-bar-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
   overflow: hidden;
 }
 
-.card-color-bar {
-  height: 3px;
-  background: var(--team-color);
+.contrib-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.8;
 }
 
-.card-body {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem 1.5rem;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.team-main {
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-}
-
-.team-position {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: var(--team-color);
-  min-width: 40px;
-}
-
-.team-name {
-  font-size: 1.125rem;
-  font-weight: 700;
-}
-
-.team-nationality {
-  font-size: 0.8rem;
-  color: #555;
-  margin-top: 0.1rem;
-}
-
-.team-stats {
-  display: flex;
-  gap: 2.5rem;
-}
-
-.stat {
-  text-align: center;
-}
-
-.stat-val {
-  font-size: 1.25rem;
+.contrib-pts {
+  font-size: 13px;
   font-weight: 700;
   color: #fff;
+  font-family: 'DM Mono', monospace;
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
 }
 
-.stat-label {
-  font-size: 0.65rem;
+.contrib-pct {
+  font-size: 11px;
   color: #555;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  margin-top: 0.2rem;
+  width: 36px;
+  flex-shrink: 0;
 }
 
-.points-bar {
-  height: 3px;
-  background: rgba(255,255,255,0.04);
+.team-acc-arrow {
+  font-size: 18px;
+  color: #333;
+  transition: var(--transition-smooth);
 }
 
-.points-bar-fill {
-  height: 100%;
-  opacity: 0.4;
-  transition: width 0.8s ease;
+.team-accordion:hover .team-acc-arrow {
+  color: #fff;
+  transform: translateX(4px);
+}
+
+@media (max-width: 1024px) {
+  .team-accordion {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .team-acc-arrow {
+    display: none;
+  }
+
+  .team-acc-right {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
 }
 
 /* Section */

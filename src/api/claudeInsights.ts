@@ -1,69 +1,52 @@
 /**
  * claudeInsights.ts
  *
- * Sends structured race data to the Anthropic/Claude API and returns
- * fan-friendly narrative analysis. This acts as an automated post-race
- * analyst. The composable expects a pre-computed `RaceStats` object so
- * that the model receives concise summary numbers rather than raw arrays
- * (this keeps prompts small and cost-efficient).
+ * Client-side orchestration for race story generation.
+ * This module no longer calls Claude API directly (security risk).
  *
- * The API key is read from `VITE_ANTHROPIC_API_KEY` in the environment.
- * Never hardcode the key. Do not commit your .env files.
+ * Instead, it proxies requests through a Vercel serverless function
+ * at /api/generateRaceStory which:
+ * - Validates the RaceStats payload (Zod)
+ * - Enforces rate limiting via Upstash Redis (5 req/min per IP)
+ * - Calls Claude on the backend (API key stays secret, never sent to client)
+ * - Returns the narrative response
+ *
+ * The backend function handles all authentication, validation, and security.
+ * This client module only prepares the RaceStats and sends it via fetch.
  */
 
-const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY as string
-const CLAUDE_MODEL = 'claude-sonnet-4-20250514'
+import { z } from 'zod'
 
 /**
- * Builds the structured prompt we send to Claude.
- * We pass numbers, not raw arrays — Claude doesn't need 2000 lap entries,
- * it needs the computed summary statistics we've already derived.
- * Keeping the prompt tight reduces cost and improves output quality.
+ * Zod schema for RaceStats validation - ensures we send valid data to the API.
+ * Matches the backend schema in /api/generateRaceStory.ts exactly.
  */
-function buildRacePrompt(raceStats: RaceStats): string {
-  return `
-You are a Formula 1 analyst writing for everyday fans who love the sport
-but don't read telemetry data. Your tone is clear, enthusiastic, and direct.
-Avoid jargon. Use concrete numbers. Tell the story of what actually happened.
-
-Here is the computed data from this race:
-
-RACE: ${raceStats.raceName} ${raceStats.season}
-WINNER: ${raceStats.winner} (${raceStats.winnerTeam})
-LAPS: ${raceStats.totalLaps}
-FASTEST LAP: ${raceStats.fastestLapDriver} — ${raceStats.fastestLapTime}
-
-RACE PACE RANKING (avg clean lap time, seconds):
-${raceStats.pacingRanking.map((d, i) => `${i + 1}. ${d.driver} — ${d.avgPace}s`).join('\n')}
-
-PIT STOP PERFORMANCE (total time lost in pits):
-${raceStats.pitRanking.map(d => `${d.driver}: ${d.totalPitTime}s across ${d.stops} stops`).join('\n')}
-
-BIGGEST POSITION MOVERS:
-Gainers: ${raceStats.biggestGainers.map(d => `${d.driver} +${d.delta}`).join(', ')}
-Losers: ${raceStats.biggestLosers.map(d => `${d.driver} ${d.delta}`).join(', ')}
-
-SAFETY CAR: ${raceStats.safetyCarLaps.length > 0 ? `Deployed laps ${raceStats.safetyCarLaps.join(', ')}` : 'No safety car'}
-
-TOP SPEED: ${raceStats.topSpeed.driver} — ${raceStats.topSpeed.speed} km/h
-
-TYRE STRATEGIES USED:
-${raceStats.strategies.map(s => `${s.driver}: ${s.strategy}`).join('\n')}
-
-Write exactly 5 insight paragraphs. Each paragraph should:
-1. Have a bold one-line headline (e.g. **The Race Pace Story**)
-2. Be 2–3 sentences max
-3. Explain one specific story from the data above
-4. Sound like a knowledgeable friend explaining it at a pub, not a press release
-
-Output only the 5 paragraphs. No intro, no outro, no bullet points.
-  `.trim()
-}
+const RaceStatsSchema = z.object({
+  raceName: z.string().min(1),
+  season: z.number().int().positive(),
+  winner: z.string().min(1),
+  winnerTeam: z.string().min(1),
+  totalLaps: z.number().int().positive(),
+  fastestLapDriver: z.string().min(1),
+  fastestLapTime: z.string().min(1),
+  pacingRanking: z.array(z.object({ driver: z.string(), avgPace: z.number() })),
+  pitRanking: z.array(z.object({ driver: z.string(), totalPitTime: z.number(), stops: z.number().int() })),
+  biggestGainers: z.array(z.object({ driver: z.string(), delta: z.number().int() })),
+  biggestLosers: z.array(z.object({ driver: z.string(), delta: z.number() })),
+  safetyCarLaps: z.array(z.number().int()),
+  topSpeed: z.object({ driver: z.string(), speed: z.number() }),
+  strategies: z.array(z.object({ driver: z.string(), strategy: z.string() })),
+  circuitName: z.string(),
+  country: z.string(),
+  location: z.string(),
+  weatherSummary: z.string(),
+  championshipStandingsSummary: z.string(),
+})
 
 /**
- * RaceStats type — the shape of data we pass to Claude.
+ * RaceStats type - the shape of data we pass to Claude via the Vercel endpoint.
  * We compute all of this from our existing store data before calling the API,
- * so Claude only receives clean, summarised numbers.
+ * so the backend receives concise, clean, summarised numbers.
  */
 export interface RaceStats {
   raceName: string
@@ -80,61 +63,76 @@ export interface RaceStats {
   safetyCarLaps: number[]
   topSpeed: { driver: string; speed: number }
   strategies: { driver: string; strategy: string }[]
+  circuitName: string
+  country: string
+  location: string
+  weatherSummary: string
+  championshipStandingsSummary: string
 }
 
 /**
- * Main export — call this after race data is fully loaded.
+ * Main export - call this after race data is fully loaded.
  * Returns an array of { headline, body } objects ready to render.
- * Results are cached in sessionStorage so we don't re-call on tab switch.
+ * Results are cached in sessionStorage so we don't re-call on navigation.
+ *
+ * This function:
+ * 1. Validates the RaceStats payload (fail fast if invalid)
+ * 2. Checks sessionStorage cache (return cached result if available)
+ * 3. POSTs the validated payload to /api/generateRaceStory
+ * 4. Handles rate limiting and API errors gracefully
+ * 5. Caches the result for fast subsequent renders
+ *
+ * @param raceStats Pre-computed race statistics object
+ * @returns Promise resolving to array of {headline, body} paragraph objects
+ * @throws Error if validation fails, rate limit exceeded, or API error occurs
  */
 export async function generateRaceStory(raceStats: RaceStats): Promise<{ headline: string; body: string }[]> {
+  // Check sessionStorage cache first - keyed by race name + season
   const cacheKey = `pitwall_story_${raceStats.season}_${raceStats.raceName}`
   const cachedStr = sessionStorage.getItem(cacheKey)
-  if (cachedStr) return JSON.parse(cachedStr)
-
-  if (!ANTHROPIC_API_KEY) {
-    throw new Error('Missing Anthropic API key. Set VITE_ANTHROPIC_API_KEY in .env.local')
+  if (cachedStr) {
+    return JSON.parse(cachedStr)
   }
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  // Validate the RaceStats object before sending to the API
+  // This ensures we never send malformed data and catch errors early on the client
+  try {
+    RaceStatsSchema.parse(raceStats)
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      const messages = (e as z.ZodError).errors.map((err: z.ZodIssue) => `${err.path.join('.')}: ${err.message}`).join('; ')
+      throw new Error(`Invalid RaceStats: ${messages}`)
+    }
+    throw e
+  }
+
+  // POST the validated RaceStats to the Vercel serverless function
+  // The backend will handle Claude API calls securely (key never sent to client)
+  const response = await fetch('/api/generateRaceStory', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      // Required header for browser-based API calls in some environments
-      'anthropic-dangerous-direct-browser-access': 'true',
     },
-    body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: buildRacePrompt(raceStats) }],
-    }),
+    body: JSON.stringify(raceStats),
   })
 
+  // Handle HTTP errors from the serverless function
   if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`Anthropic API error: ${response.status} ${text}`)
+    const errorData = await response.json().catch(() => ({}))
+    if (response.status === 429) {
+      throw new Error('Rate limited. Please wait a minute before trying again.')
+    }
+    if (response.status === 400) {
+      throw new Error(`Invalid request: ${errorData.error || 'Unknown error'}`)
+    }
+    throw new Error(`API error: ${response.status} - ${errorData.error || 'Unknown error'}`)
   }
 
+  // Parse the successful response
   const data = await response.json()
-  // Anthropic responses can be nested — attempt to find the returned text
-  const text = data?.content?.[0]?.text ?? data?.completion ?? ''
+  const paragraphs = data.stories || []
 
-  // Parse Claude's output into structured { headline, body } pairs.
-  // Claude returns paragraphs starting with **Headline** on the first line.
-  const paragraphs = text
-    .split('\n\n')
-    .filter(Boolean)
-    .map((block: string) => {
-      const lines = block.split('\n')
-      const headlineMatch = lines[0].match(/\*\*(.+?)\*\*/)
-      return {
-        headline: headlineMatch ? headlineMatch[1] : 'Insight',
-        body: lines.slice(1).join(' ').trim() || lines[0].replace(/\*\*/g, '').trim(),
-      }
-    })
-
+  // Cache the result so re-renders or tab switches don't re-fetch
   sessionStorage.setItem(cacheKey, JSON.stringify(paragraphs))
   return paragraphs
 }

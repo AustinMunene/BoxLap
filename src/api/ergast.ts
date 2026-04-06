@@ -29,12 +29,17 @@ export const getRaceResults = (year: number, round: number) =>
     get(`${BASE}/${year}/${round}/results.json`)
   )
 
-export const getDriverStandings = (year: number = 'current' as unknown as number) =>
+export const getQualifyingResults = (year: number, round: number) =>
+  cached(`qualifying-${year}-${round}`, () =>
+    get(`${BASE}/${year}/${round}/qualifying.json`)
+  )
+
+export const getDriverStandings = (year: number | 'current' = 'current') =>
   cached(`driver-standings-${year}`, () =>
     get(`${BASE}/${year}/driverStandings.json`)
   )
 
-export const getConstructorStandings = (year: number = 'current' as unknown as number) =>
+export const getConstructorStandings = (year: number | 'current' = 'current') =>
   cached(`constructor-standings-${year}`, () =>
     get(`${BASE}/${year}/constructorStandings.json`)
   )
@@ -42,6 +47,16 @@ export const getConstructorStandings = (year: number = 'current' as unknown as n
 export const getAllRaceResultsForSeason = (year: number) =>
   cached(`all-race-results-${year}`, () =>
     get(`${BASE}/${year}/results.json?limit=500`)
+  )
+
+export const getDriverResults = (year: number, driverId: string) =>
+  cached(`driver-results-${year}-${driverId}`, () =>
+    get(`${BASE}/${year}/drivers/${driverId}/results.json`)
+  )
+
+export const getConstructorResults = (year: number, constructorId: string) =>
+  cached(`constructor-results-${year}-${constructorId}`, () =>
+    get(`${BASE}/${year}/constructors/${constructorId}/results.json`)
   )
 
 export const getCircuitResults = (circuitId: string) =>

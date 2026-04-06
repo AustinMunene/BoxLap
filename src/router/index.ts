@@ -21,12 +21,26 @@ const router = createRouter({
       component: () => import('@/views/DriversView.vue'),
     },
     {
+      path: '/drivers/:code',
+      component: () => import('@/views/DriverProfileView.vue'),
+      props: route => ({ code: String(route.params.code || '') }),
+    },
+    {
       path: '/teams',
       component: () => import('@/views/TeamsView.vue'),
     },
     {
-      path: '/predict',
-      component: () => import('@/views/PredictView.vue'),
+      path: '/teams/:name',
+      component: () => import('@/views/TeamProfileView.vue'),
+      props: route => ({ name: String(route.params.name || '') }),
+    },
+    {
+      path: '/telemetry/:season/:round',
+      component: () => import('@/views/TelemetryView.vue'),
+      props: route => ({
+        season: parseInt(route.params.season as string),
+        round: parseInt(route.params.round as string),
+      }),
     },
   ],
   scrollBehavior() {

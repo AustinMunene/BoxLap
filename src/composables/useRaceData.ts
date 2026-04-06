@@ -1,18 +1,28 @@
-import { computed, watch } from 'vue'
+import { computed, watch, type MaybeRefOrGetter, toValue } from 'vue'
 import { useRaceStore } from '@/stores/raceStore'
 import { useInsights } from './useInsights'
 
-export function useRaceData(season: number, round: number) {
+export function useRaceData(season: MaybeRefOrGetter<number>, round: MaybeRefOrGetter<number>) {
   const store = useRaceStore()
+  const seasonVal = () => toValue(season)
+  const roundVal = () => toValue(round)
 
   async function load() {
-    await store.loadRace(season, round)
+    await store.loadRace(seasonVal(), roundVal())
     // Load laps for top 10 drivers after race loads
     if (store.currentSession) {
       const sk = store.currentSession.session_key
-      const driverNums = store.results.slice(0, 10).map(r => parseInt(r.Driver.permanentNumber))
+      /**
+       * Prefer OpenF1 `driver_number` when available.
+       * Ergast `permanentNumber` is not guaranteed to match OpenF1 driver numbers for a given session,
+       * which can cause 404s and unnecessary rate-limit pressure.
+       */
+      const openf1Nums = store.drivers.slice(0, 10).map(d => d.driver_number).filter(n => Number.isFinite(n))
+      const fallbackNums = store.results.slice(0, 10).map(r => parseInt(r.Driver.permanentNumber, 10)).filter(n => Number.isFinite(n))
+      const driverNums = openf1Nums.length > 0 ? openf1Nums : fallbackNums
+
+      // Serialize inside OpenF1 limiter; Promise.allSettled is fine here because the limiter throttles.
       await Promise.allSettled(driverNums.map(n => store.loadLapsForDriver(sk, n)))
-      await store.loadPositions(sk)
     }
   }
 
@@ -39,7 +49,7 @@ export function useRaceData(season: number, round: number) {
   // Watch for session changes to load positions
   watch(() => store.currentSession, async (session) => {
     if (session) {
-      await store.loadPositions(session.session_key)
+      if (store.positions.length === 0) await store.loadPositions(session.session_key)
     }
   })
 

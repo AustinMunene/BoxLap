@@ -1,16 +1,53 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { getLaps, getStints, getPitStops, getDrivers, getPositions, getSessions, getCarData, getIntervals, getWeather, getRaceControl } from '@/api/openf1'
 import {
-  getDriverLaps,
-  getSessionDrivers,
-  getSessionPits,
-  getSessionPositions,
-  getSessionStints,
-} from '@/api/telemetry'
+  getLaps,
+  getStints,
+  getPitStops,
+  getDrivers,
+  getPositions,
+  getSessions,
+  getCarData,
+  getCarDataForLap,
+  getIntervals,
+  getWeather,
+  getRaceControl,
+} from '@/api/openf1'
+import type { CarDataSample, IntervalData, WeatherData, RaceControlMessage } from '@/types/openf1'
 import { getRaceResults } from '@/api/ergast'
 import type { Lap, Stint, PitStop, RaceDriver, Position, Session } from '@/api/openf1'
 import type { ErgastRaceResult } from '@/api/ergast'
+
+/**
+ * Converts time-series speed data to distance-series by integrating
+ * speed over time (distance += speed_ms * delta_t).
+ *
+ * We do this because OpenF1's free tier does not provide GPS coordinates.
+ * The result is an approximation - accuracy is sufficient for driver
+ * comparison but not for absolute track position mapping.
+ *
+ * speed is in km/h → convert to m/s by dividing by 3.6
+ * delta_t is the difference in seconds between consecutive samples
+ *
+ * @param samples - CarDataSample[] ordered by date ascending
+ * @returns The same array with distance_m added to each sample
+ */
+function computeDistanceFromSpeed(
+  samples: CarDataSample[]
+): Array<CarDataSample & { distance_m: number }> {
+  let distance = 0
+  return samples.map((sample, i) => {
+    if (i === 0) return { ...sample, distance_m: 0 }
+    const prev = samples[i - 1]
+    const deltaT = Math.max(
+      0,
+      (new Date(sample.date).getTime() - new Date(prev.date).getTime()) / 1000
+    )
+    const speedMs = (sample.speed ?? 0) / 3.6
+    distance += speedMs * deltaT
+    return { ...sample, distance_m: Math.round(distance) }
+  })
+}
 
 export const useRaceStore = defineStore('race', () => {
   const results = ref<ErgastRaceResult[]>([])
@@ -21,22 +58,20 @@ export const useRaceStore = defineStore('race', () => {
   const positions = ref<Position[]>([])
   const sessions = ref<Session[]>([])
   const currentSession = ref<Session | null>(null)
-  
-  // Raw telemetry per driver — keyed by driver_number.
-  // Populated on demand when a driver is selected for deep analysis.
-  const carData = ref<Record<number, any[]>>({})
 
-  // Gap to leader sampled throughout the race for all drivers.
-  // Used to render the gap evolution chart on the Lap Times tab.
-  const intervals = ref<any[]>([])
+  const carData = ref<Record<number, CarDataSample[]>>({})
 
-  // Weather samples taken throughout the session.
-  // Used to overlay track temperature on the lap time chart.
-  const weather = ref<any[]>([])
+  /**
+   * Filtered telemetry for a single lap, keyed by `${driverNumber}-${lapNumber}`.
+   *
+   * Data source: OpenF1 `/car_data`, filtered using lap timestamps from `/laps`.
+   * Samples include integrated `distance_m` for chart X-axis.
+   */
+  const lapTelemetry = ref<Record<string, Array<CarDataSample & { distance_m: number }>>>({})
 
-  // Race control messages — flags, safety car periods, DRS zones.
-  // Used to mark special periods on all time-series charts.
-  const raceControl = ref<any[]>([])
+  const intervals = ref<IntervalData[]>([])
+  const weather = ref<WeatherData[]>([])
+  const raceControl = ref<RaceControlMessage[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -44,18 +79,17 @@ export const useRaceStore = defineStore('race', () => {
     loading.value = true
     error.value = null
     try {
-      // Load Ergast results
-      const ergastData = await getRaceResults(season, round) as { MRData: { RaceTable: { Races: Array<{ Results: ErgastRaceResult[] }> } } }
+      const ergastData = (await getRaceResults(season, round)) as {
+        MRData: { RaceTable: { Races: Array<{ Results: ErgastRaceResult[] }> } }
+      }
       const races = ergastData?.MRData?.RaceTable?.Races
       if (races && races.length > 0) {
         results.value = races[0].Results || []
       }
 
-      // Load OpenF1 sessions to get session key
-      const sessionsData = await getSessions(season) as Session[]
+      const sessionsData = (await getSessions(season)) as Session[]
       sessions.value = sessionsData || []
 
-      // Find matching race session (by round order)
       if (sessionsData && sessionsData.length >= round) {
         currentSession.value = sessionsData[round - 1] || null
       } else if (sessionsData && sessionsData.length > 0) {
@@ -64,41 +98,14 @@ export const useRaceStore = defineStore('race', () => {
 
       if (currentSession.value) {
         const sk = currentSession.value.session_key
-
-        // Try Supabase-first telemetry; fall back to OpenF1 if nothing is stored yet
-        const [
-          stintsFromSupabase,
-          pitsFromSupabase,
-          driversFromSupabase,
-          positionsFromSupabase,
-        ] = await Promise.all([
-          getSessionStints(sk),
-          getSessionPits(sk),
-          getSessionDrivers(sk),
-          getSessionPositions(sk),
+        const [stintsData, pitsData, driversData] = await Promise.all([
+          getStints(sk) as Promise<Stint[]>,
+          getPitStops(sk) as Promise<PitStop[]>,
+          getDrivers(sk) as Promise<RaceDriver[]>,
         ])
-
-        const hasSupabaseTelemetry =
-          stintsFromSupabase.length > 0 ||
-          pitsFromSupabase.length > 0 ||
-          driversFromSupabase.length > 0 ||
-          positionsFromSupabase.length > 0
-
-        if (hasSupabaseTelemetry) {
-          stints.value = stintsFromSupabase
-          pits.value = pitsFromSupabase
-          drivers.value = driversFromSupabase
-          positions.value = positionsFromSupabase
-        } else {
-          const [stintsData, pitsData, driversData] = await Promise.all([
-            getStints(sk) as Promise<Stint[]>,
-            getPitStops(sk) as Promise<PitStop[]>,
-            getDrivers(sk) as Promise<RaceDriver[]>,
-          ])
-          stints.value = stintsData || []
-          pits.value = pitsData || []
-          drivers.value = driversData || []
-        }
+        stints.value = Array.isArray(stintsData) ? stintsData : []
+        pits.value = Array.isArray(pitsData) ? pitsData : []
+        drivers.value = Array.isArray(driversData) ? driversData : []
       }
     } catch (e) {
       const err = e as Error & { status?: number }
@@ -116,32 +123,25 @@ export const useRaceStore = defineStore('race', () => {
   }
 
   async function loadLapsForDriver(sessionKey: number, driverNumber: number) {
-    if (laps.value[driverNumber]) return
+    if (laps.value[driverNumber]?.length) return
     try {
-      // Try Supabase-stored laps first
-      const supabaseLaps = await getDriverLaps(sessionKey, driverNumber)
-      if (supabaseLaps.length > 0) {
-        laps.value = { ...laps.value, [driverNumber]: supabaseLaps }
+      const data = (await getLaps(sessionKey, driverNumber)) as Lap[]
+      laps.value = { ...laps.value, [driverNumber]: Array.isArray(data) ? data : [] }
+    } catch (e) {
+      const err = e as Error & { status?: number }
+      if (err.status === 404 || err.status === 429) {
+        laps.value = { ...laps.value, [driverNumber]: [] }
         return
       }
-
-      // Fallback to direct OpenF1 if Supabase has not been populated yet
-      const data = await getLaps(sessionKey, driverNumber) as Lap[]
-      laps.value = { ...laps.value, [driverNumber]: data || [] }
-    } catch (e) {
       console.error(`loadLapsForDriver error for #${driverNumber}:`, e)
     }
   }
 
-  /**
-   * Loads car telemetry for a specific driver.
-   * Called lazily — only when user clicks into a driver's detail view.
-   * We key by driver_number so we don't re-fetch if already loaded.
-   */
   async function loadCarData(sessionKey: number, driverNumber: number) {
-    if (carData.value[driverNumber]) return // already cached in store
+    if (carData.value[driverNumber]?.length) return
     try {
-      carData.value[driverNumber] = await getCarData(sessionKey, driverNumber)
+      const raw = await getCarData(sessionKey, driverNumber)
+      carData.value[driverNumber] = Array.isArray(raw) ? (raw as CarDataSample[]) : []
     } catch (e) {
       console.error(`loadCarData error for #${driverNumber}:`, e)
       carData.value[driverNumber] = []
@@ -149,41 +149,105 @@ export const useRaceStore = defineStore('race', () => {
   }
 
   /**
-   * Loads gap-to-leader data for all drivers.
-   * Called as part of the main race load alongside laps and positions.
-   * We sample this down to one entry per lap per driver for chart performance.
+   * Loads car telemetry for one driver filtered to a single lap.
+   *
+   * Data source: OpenF1 `/car_data`; window from `laps` via `date_start` / next lap.
    */
+  /**
+   * Loads car telemetry for one driver filtered to a single lap.
+   *
+   * Data source: OpenF1 `/car_data` with date_gt/date_lt params; window from
+   * `laps` via `date_start` / next lap's `date_start`.
+   * Samples include integrated `distance_m` for chart X-axis.
+   *
+   * We now pass the lap time window directly to OpenF1 as query params.
+   * This replaces the previous pattern of fetching the full session (~20,000
+   * samples) and filtering in JS - which caused HTTP 422 "too much data" errors.
+   * OpenF1 returns ~200-400 samples for a single lap, well within free tier limits.
+   */
+  async function loadTelemetryForLap(sessionKey: number, driverNumber: number, lapNumber: number) {
+    const key = `${driverNumber}-${lapNumber}`
+    if ((lapTelemetry.value[key]?.length ?? 0) > 0) return
+
+    try {
+      const driverLaps = laps.value[driverNumber]
+      if (!driverLaps?.length) {
+        throw new Error(`No lap data available for driver ${driverNumber}. Lap data may still be loading.`)
+      }
+
+      const targetLap = driverLaps.find(l => l.lap_number === lapNumber)
+      const nextLap = driverLaps.find(l => l.lap_number === lapNumber + 1)
+      if (!targetLap?.date_start) {
+        throw new Error(`Lap ${lapNumber} not found for driver ${driverNumber}. Available laps may not include this lap number.`)
+      }
+
+      const lapStart = targetLap.date_start
+      const lapEnd = nextLap?.date_start ?? null
+
+      const lapData = await getCarDataForLap(
+        sessionKey,
+        driverNumber,
+        lapStart,
+        lapEnd ?? null
+      )
+
+      // No JS filtering needed - OpenF1 already scoped the response to this lap.
+      // We still compute distance_m via speed integration as before.
+      const withDistance = computeDistanceFromSpeed(lapData)
+
+      lapTelemetry.value = { ...lapTelemetry.value, [key]: withDistance }
+    } catch (error: unknown) {
+      /**
+       * Log the full error for debugging. Do NOT silently swallow it -
+       * an empty array here causes the UI to show "Select drivers to begin"
+       * forever with no explanation. Better to surface the error.
+       */
+      console.error(`[raceStore] loadTelemetryForLap failed for driver ${driverNumber} lap ${lapNumber}:`, error)
+      // Re-throw so TelemetryView can catch and show a user-facing error state
+      throw error
+    }
+  }
+
   async function loadIntervals(sessionKey: number) {
     try {
-      intervals.value = await getIntervals(sessionKey)
+      const raw = await getIntervals(sessionKey)
+      intervals.value = Array.isArray(raw) ? (raw as IntervalData[]) : []
     } catch (e) {
+      const err = e as Error & { status?: number }
+      if (err.status === 404 || err.status === 429) {
+        intervals.value = []
+        return
+      }
       console.error('loadIntervals error:', e)
       intervals.value = []
     }
   }
 
-  /**
-   * Loads weather data for the session.
-   * We only need one call per race — weather applies to all drivers equally.
-   */
   async function loadWeather(sessionKey: number) {
     try {
-      weather.value = await getWeather(sessionKey)
+      const raw = await getWeather(sessionKey)
+      weather.value = Array.isArray(raw) ? (raw as WeatherData[]) : []
     } catch (e) {
+      const err = e as Error & { status?: number }
+      if (err.status === 404 || err.status === 429) {
+        weather.value = []
+        return
+      }
       console.error('loadWeather error:', e)
       weather.value = []
     }
   }
 
-  /**
-   * Loads race control messages.
-   * We parse these into structured periods (SC laps, VSC laps, DRS enabled laps)
-   * so charts can shade those ranges without the component needing raw messages.
-   */
   async function loadRaceControl(sessionKey: number) {
     try {
-      raceControl.value = await getRaceControl(sessionKey)
+      const raw = await getRaceControl(sessionKey)
+      raceControl.value = Array.isArray(raw) ? (raw as RaceControlMessage[]) : []
     } catch (e) {
+      const err = e as Error & { status?: number }
+      if (err.status === 404 || err.status === 429) {
+        raceControl.value = []
+        return
+      }
       console.error('loadRaceControl error:', e)
       raceControl.value = []
     }
@@ -191,19 +255,11 @@ export const useRaceStore = defineStore('race', () => {
 
   async function loadPositions(sessionKey: number) {
     try {
-      const supabasePositions = await getSessionPositions(sessionKey)
-      if (supabasePositions.length > 0) {
-        positions.value = supabasePositions
-        return
-      }
-
-      const data = await getPositions(sessionKey) as Position[]
-      positions.value = data || []
+      const data = (await getPositions(sessionKey)) as Position[]
+      positions.value = Array.isArray(data) ? data : []
     } catch (e) {
       const err = e as Error & { status?: number }
       if (err.status === 429) {
-        // eslint-disable-next-line no-console
-        console.warn('OpenF1 rate limit hit while loading positions', err)
         return
       }
       console.error('loadPositions error:', e)
@@ -217,6 +273,11 @@ export const useRaceStore = defineStore('race', () => {
     pits.value = []
     drivers.value = []
     positions.value = []
+    carData.value = {}
+    lapTelemetry.value = {}
+    intervals.value = []
+    weather.value = []
+    raceControl.value = []
     currentSession.value = null
     error.value = null
   }
@@ -229,6 +290,7 @@ export const useRaceStore = defineStore('race', () => {
     drivers,
     positions,
     carData,
+    lapTelemetry,
     intervals,
     weather,
     raceControl,
@@ -239,10 +301,11 @@ export const useRaceStore = defineStore('race', () => {
     loadRace,
     loadLapsForDriver,
     loadCarData,
+    loadTelemetryForLap,
     loadIntervals,
     loadWeather,
     loadRaceControl,
     loadPositions,
-    reset
+    reset,
   }
 })

@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="page-header">
         <h1 class="page-title">Drivers</h1>
-        <span class="page-sub">{{ seasonStore.currentYear }} Championship</span>
+        <span class="page-sub">{{ seasonStore.selectedSeason }} Championship</span>
       </div>
 
       <!-- Loading -->
@@ -17,29 +17,49 @@
         <div
           v-for="standing in seasonStore.driverStandings"
           :key="standing.Driver.driverId"
-          class="driver-card glass-card"
+          class="driver-card glass-card glass-card--interactive"
+          role="link"
+          tabindex="0"
           :style="{ '--team-color': getTeamColor(standing.Constructors[0]?.name || '') }"
+          @click="goDriver(standing.Driver.code)"
+          @keydown="onDriverCardKey($event, standing.Driver.code)"
         >
-          <div class="card-team-strip"></div>
-          <div class="card-content">
-            <div class="card-top">
-              <span class="card-pos font-data">P{{ standing.position }}</span>
-              <span class="card-pts font-data">{{ standing.points }} pts</span>
+          <div class="driver-card-bar" />
+          <div class="driver-card-pos">P{{ standing.position }}</div>
+          <div class="driver-card-photo-wrap">
+            <img
+              v-if="driverImages[standing.Driver.code]"
+              class="driver-card-photo"
+              :src="driverImages[standing.Driver.code] || undefined"
+              :alt="standing.Driver.familyName"
+            />
+            <div v-else class="driver-card-photo-placeholder">
+              {{ standing.Driver.code }}
             </div>
-            <div class="card-driver">
-              <div class="driver-num font-data">{{ standing.Driver.permanentNumber }}</div>
-              <div class="driver-names">
-                <div class="driver-given">{{ standing.Driver.givenName }}</div>
-                <div class="driver-family">{{ standing.Driver.familyName }}</div>
-              </div>
+          </div>
+          <div class="driver-card-info">
+            <span class="driver-card-code">{{ standing.Driver.code }}</span>
+            <span class="driver-card-name">{{ standing.Driver.familyName }}</span>
+            <span class="driver-card-team" :style="{ color: 'var(--team-color)' }">
+              {{ standing.Constructors[0]?.name }}
+            </span>
+          </div>
+          <div class="driver-card-pts">
+            <span class="driver-card-pts-value stat-number">{{ standing.points }}</span>
+            <span class="driver-card-pts-label">PTS</span>
+          </div>
+          <div class="driver-card-hover-stats">
+            <div class="hover-stat">
+              <span class="hover-stat-value">{{ getDriverWins(standing) }}</span>
+              <span class="hover-stat-label">Wins</span>
             </div>
-            <div class="card-bottom">
-              <span class="team-name" :style="{ color: getTeamColor(standing.Constructors[0]?.name || '') }">
-                {{ standing.Constructors[0]?.name }}
-              </span>
-              <span class="wins-badge" v-if="parseInt(standing.wins) > 0">
-                {{ standing.wins }}W
-              </span>
+            <div class="hover-stat">
+              <span class="hover-stat-value">{{ getDriverPodiums(standing) }}</span>
+              <span class="hover-stat-label">Podiums</span>
+            </div>
+            <div class="hover-stat">
+              <span class="hover-stat-value">→</span>
+              <span class="hover-stat-label">Full profile</span>
             </div>
           </div>
         </div>
@@ -50,7 +70,7 @@
         <div class="section-header">
           <h2 class="section-title">Head-to-Head</h2>
         </div>
-        <div class="glass-card h2h-card">
+        <div class="glass-card glass-card--static h2h-card">
           <div class="h2h-selectors">
             <div class="selector-group">
               <label class="selector-label">Driver 1</label>
@@ -61,7 +81,7 @@
                   :key="s.Driver.driverId"
                   :value="s.Driver.driverId"
                 >
-                  {{ s.Driver.code }} — {{ s.Driver.givenName }} {{ s.Driver.familyName }}
+                  {{ s.Driver.code }} - {{ s.Driver.givenName }} {{ s.Driver.familyName }}
                 </option>
               </select>
             </div>
@@ -75,7 +95,7 @@
                   :key="s.Driver.driverId"
                   :value="s.Driver.driverId"
                 >
-                  {{ s.Driver.code }} — {{ s.Driver.givenName }} {{ s.Driver.familyName }}
+                  {{ s.Driver.code }} - {{ s.Driver.givenName }} {{ s.Driver.familyName }}
                 </option>
               </select>
             </div>
@@ -116,7 +136,7 @@
         <div class="section-header">
           <h2 class="section-title">Points Distribution</h2>
         </div>
-        <div class="glass-card">
+        <div class="glass-card glass-card--static">
           <div class="points-chart-wrapper">
             <Bar v-if="pointsChartData" :data="pointsChartData" :options="pointsChartOptions" />
           </div>
@@ -127,19 +147,46 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend
 } from 'chart.js'
 import { useSeasonStore } from '@/stores/seasonStore'
 import { getTeamColor } from '@/constants/teams'
+import type { ErgastDriverStanding } from '@/api/ergast'
 import SkeletonBlock from '@/components/ui/SkeletonBlock.vue'
 import RadarChart from '@/components/charts/RadarChart.vue'
+import { getAllDriverImages } from '@/api/wikipedia'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
 const seasonStore = useSeasonStore()
+const router = useRouter()
+
+function goDriver(code: string) {
+  router.push(`/drivers/${encodeURIComponent(code)}`)
+}
+
+function onDriverCardKey(e: KeyboardEvent, code: string) {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    goDriver(code)
+  }
+}
+
+function getDriverWins(s: ErgastDriverStanding) {
+  return parseInt(s.wins, 10) || 0
+}
+
+/** Ergast standings omit podium count; show placeholder in UI. */
+function getDriverPodiums(_s: ErgastDriverStanding) {
+  return '—'
+}
+
+/** Wikipedia thumbnail URLs keyed by driver code (3-letter). */
+const driverImages = ref<Record<string, string | null>>({})
 
 const selectedDriver1 = ref('')
 const selectedDriver2 = ref('')
@@ -274,6 +321,16 @@ onMounted(() => {
     seasonStore.loadCurrentSeason()
   }
 })
+
+watch(
+  () => seasonStore.driverStandings,
+  async (standings) => {
+    if (!standings.length) return
+    const codes = standings.map(s => s.Driver.code)
+    driverImages.value = await getAllDriverImages(codes)
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
@@ -314,97 +371,167 @@ onMounted(() => {
 /* Driver Cards */
 .drivers-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 0.875rem;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
 }
 
 .driver-card {
-  display: flex;
+  position: relative;
+  padding: 0;
   overflow: hidden;
-  transition: transform 0.2s;
+  border-radius: 16px;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
 }
 
-.driver-card:hover {
-  transform: translateY(-3px);
-}
-
-.card-team-strip {
-  width: 4px;
+.driver-card-bar {
+  height: 3px;
   background: var(--team-color);
+  width: 100%;
   flex-shrink: 0;
 }
 
-.card-content {
-  padding: 1.125rem 1.125rem 1rem;
+.driver-card-pos {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  z-index: 2;
+}
+
+.driver-card-photo-wrap {
+  height: 160px;
+  overflow: hidden;
+  position: relative;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.driver-card-photo-wrap::before {
+  content: '';
+  position: absolute;
+  bottom: -20px;
+  right: -20px;
+  width: 120px;
+  height: 200px;
+  background: var(--team-color);
+  opacity: 0.06;
+  transform: rotate(-15deg);
+  pointer-events: none;
+}
+
+.driver-card-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  position: relative;
+  z-index: 1;
+}
+
+.driver-card-photo-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  font-weight: 900;
+  color: var(--team-color);
+  opacity: 0.4;
+  font-family: 'DM Mono', monospace;
+  position: relative;
+  z-index: 1;
+}
+
+.driver-card-info {
+  padding: 14px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   flex: 1;
 }
 
-.card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.75rem;
-}
-
-.card-pos {
-  font-size: 0.7rem;
+.driver-card-code {
+  font-size: 11px;
   font-weight: 700;
   color: #555;
-  letter-spacing: 0.08em;
-}
-
-.card-pts {
-  font-size: 0.75rem;
-  color: #FFC906;
-  font-weight: 600;
-}
-
-.card-driver {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.625rem;
-  margin-bottom: 0.875rem;
-}
-
-.driver-num {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--team-color);
-  line-height: 1;
-}
-
-.driver-names {}
-
-.driver-given {
-  font-size: 0.75rem;
-  color: #888;
-}
-
-.driver-family {
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.card-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.team-name {
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.wins-badge {
-  font-size: 0.65rem;
-  font-weight: 700;
   font-family: 'DM Mono', monospace;
-  background: rgba(232, 0, 45, 0.15);
-  border: 1px solid rgba(232, 0, 45, 0.3);
-  color: #E8002D;
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
+  letter-spacing: 1px;
+}
+
+.driver-card-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  font-family: 'Titillium Web', sans-serif;
+}
+
+.driver-card-team {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.driver-card-pts {
+  padding: 0 16px 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.driver-card-pts-value {
+  font-size: 28px;
+}
+
+.driver-card-pts-label {
+  font-size: 12px;
+  color: #555;
+  text-transform: uppercase;
+}
+
+.driver-card-hover-stats {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(8px);
+  padding: 16px;
+  display: flex;
+  justify-content: space-around;
+  transform: translateY(100%);
+  transition: var(--transition-smooth);
+  border-top: 1px solid var(--glass-border);
+  z-index: 3;
+}
+
+.driver-card:hover .driver-card-hover-stats {
+  transform: translateY(0);
+}
+
+.hover-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.hover-stat-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  font-family: 'DM Mono', monospace;
+}
+
+.hover-stat-label {
+  font-size: 10px;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 /* Section */
@@ -561,8 +688,20 @@ onMounted(() => {
   padding: 1.5rem;
 }
 
+@media (max-width: 1100px) {
+  .drivers-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 900px) {
   .h2h-comparison {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .drivers-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -1,6 +1,7 @@
 import { computed } from 'vue'
 import type { Ref } from 'vue'
 import type { Lap, Stint, PitStop } from '@/api/openf1'
+import type { CarDataSample, IntervalData, WeatherData, RaceControlMessage } from '@/types/openf1'
 import type { ErgastRaceResult } from '@/api/ergast'
 
 export interface Insight {
@@ -116,7 +117,7 @@ function getPitStopWinner(pits: PitStop[], results: ErgastRaceResult[]): Insight
   return {
     icon: '🔧',
     title: 'Fastest Pit Crew',
-    description: `${result.Driver.givenName} ${result.Driver.familyName}'s team completed their pit stops in ${best.total.toFixed(2)}s total — the fastest pit wall of the race.`,
+    description: `${result.Driver.givenName} ${result.Driver.familyName}'s team completed their pit stops in ${best.total.toFixed(2)}s total - the fastest pit wall of the race.`,
     type: 'pit',
     accent: '#FF8000',
   }
@@ -207,7 +208,7 @@ function getTeammateDeltas(
   return {
     icon: '👥',
     title: 'Biggest Teammate Gap',
-    description: `At ${biggest.team}, ${biggest.driver1} was ${biggest.delta.toFixed(3)}s per lap faster than ${biggest.driver2} on average clean laps — the biggest intra-team pace gap of the race.`,
+    description: `At ${biggest.team}, ${biggest.driver1} was ${biggest.delta.toFixed(3)}s per lap faster than ${biggest.driver2} on average clean laps - the biggest intra-team pace gap of the race.`,
     type: 'teammate',
     accent: '#B6BABD',
   }
@@ -219,10 +220,10 @@ export function useInsights(
   stints: Ref<Stint[]>,
   pits: Ref<PitStop[]>
   // Optional additional telemetry and session-level data
-  , carData?: Ref<Record<number, any[]>>
-  , raceControl?: Ref<any[]>
-  , weather?: Ref<any[]>
-  , intervals?: Ref<any[]>
+  , carData?: Ref<Record<number, CarDataSample[]>>
+  , raceControl?: Ref<RaceControlMessage[]>
+  , weather?: Ref<WeatherData[]>
+  , intervals?: Ref<IntervalData[]>
 ) {
   // Helper: safe unwrap optional refs
   const _carData = carData ? carData.value : {}
@@ -236,7 +237,7 @@ export function useInsights(
    * Filters to only straight-line speed (DRS open = drs >= 8, throttle >= 95)
    * to avoid counting braking zones. Returns driver, topSpeed, lap (if available).
    */
-  function getSpeedTrapWinner(carData: Record<number, any[]>, drivers: ErgastRaceResult[]) {
+  function getSpeedTrapWinner(carData: Record<number, CarDataSample[]>, drivers: ErgastRaceResult[]) {
     let best: { driver: string; topSpeed: number; lap: number | null } | null = null
     // Iterate each driver's telemetry samples
     for (const [driverNumStr, samples] of Object.entries(carData)) {
@@ -261,7 +262,7 @@ export function useInsights(
       icon: '💨',
       title: 'Top Speed (Speed Trap)',
       description: `${res ? `${res.Driver.givenName} ${res.Driver.familyName}` : `#${best.driver}`} recorded ${best.topSpeed.toFixed(1)} km/h${best.lap ? ` on lap ${best.lap}` : ''}.`,
-      type: 'pace',
+      type: 'pace' as const,
       accent: '#00A3FF',
     }
   }
@@ -272,7 +273,7 @@ export function useInsights(
    * Calculates how many laps ran under safety car and which drivers
    * benefited most from the timing (drivers who started a new stint during SC).
    */
-  function getSafetyCarImpact(raceControl: any[], stintsArr: Stint[]) {
+  function getSafetyCarImpact(raceControl: RaceControlMessage[], stintsArr: Stint[]) {
     // Build SC ranges from raceControl messages: find DEPLOYED -> CLEAR pairs
     const scRanges: Array<{ startLap: number; endLap: number }> = []
     let current: { startLap: number | null } | null = null
@@ -308,7 +309,7 @@ export function useInsights(
       icon: '🚨',
       title: 'Safety Car Impact',
       description: `Safety Car covered ${Array.from(new Set(scLaps)).length} lap(s). Benefited drivers: ${Array.from(beneficiaries).join(', ') || 'None detected'}.`,
-      type: 'strategy',
+      type: 'strategy' as const,
       accent: '#FF3B30',
     }
   }
@@ -319,13 +320,13 @@ export function useInsights(
    * Finds the lap range where track temp peaked and checks if lap times
    * improved (rubber laid down) or degraded (overheating tyres).
    */
-  function getWeatherEffect(weatherArr: any[], lapsLookup: Record<number, Lap[]>) {
+  function getWeatherEffect(weatherArr: WeatherData[], lapsLookup: Record<number, Lap[]>) {
     if (!weatherArr || weatherArr.length === 0) return null
     // Find sample with max track_temperature
     const sampleWithMax = weatherArr.reduce((best, s) => {
       if (!best) return s
       return (s.track_temperature ?? -Infinity) > (best.track_temperature ?? -Infinity) ? s : best
-    }, null as any)
+    }, null as WeatherData | null)
     if (!sampleWithMax) return null
 
     // Attempt to infer lap number from sample timestamp by checking lap start dates in lapsLookup
@@ -371,7 +372,7 @@ export function useInsights(
       icon: '🌡️',
       title: 'Weather & Pace',
       description: `Track temp peaked around lap ${peakLap}. Average lap time ${delta > 0 ? 'worsened' : 'improved'} by ${Math.abs(delta).toFixed(2)}s in the following ${window} laps, suggesting ${delta > 0 ? 'thermal degradation' : 'improved grip/rubbering'}.`,
-      type: 'pace',
+      type: 'pace' as const,
       accent: '#007AFF',
     }
   }
@@ -381,7 +382,7 @@ export function useInsights(
    * Scans intervals data to find the lap where the race leader's
    * gap was largest (dominance peak) and smallest (closest battle).
    */
-  function getGapEvolutionMoments(intervalsArr: any[]) {
+  function getGapEvolutionMoments(intervalsArr: IntervalData[]) {
     if (!intervalsArr || intervalsArr.length === 0) return null
     // We will look for samples where gap_to_leader is numeric and use those to find peaks
     const parsed: Array<{ date: string; driver_number: number; gapToLeaderSeconds: number | null }> = []
@@ -413,7 +414,7 @@ export function useInsights(
       icon: '📈',
       title: 'Gap Evolution',
       description: `Closest battle sampled at ${closest.date} with ${closest.gapToLeaderSeconds}s to leader. Biggest dominance sampled at ${furthest.date} with ${furthest.gapToLeaderSeconds}s gap.`,
-      type: 'pace',
+      type: 'pace' as const,
       accent: '#9B59B6',
     }
   }
@@ -423,10 +424,10 @@ export function useInsights(
    * Finds moments where 3+ cars were within 1 second of each other
    * using interval_to_position_ahead data.
    */
-  function getDrsTrains(intervalsArr: any[]) {
+  function getDrsTrains(intervalsArr: IntervalData[]) {
     if (!intervalsArr || intervalsArr.length === 0) return null
     // Group samples by timestamp to look for clusters
-    const byTime: Record<string, any[]> = {}
+    const byTime: Record<string, IntervalData[]> = {}
     for (const s of intervalsArr) {
       const t = s.date
       if (!byTime[t]) byTime[t] = []
@@ -438,7 +439,7 @@ export function useInsights(
       // Sort by position-ahead (smallest first) and detect chains
       const sorted = samples
         .filter(s => s.interval_to_position_ahead != null)
-        .sort((a, b) => a.interval_to_position_ahead - b.interval_to_position_ahead)
+        .sort((a, b) => (a.interval_to_position_ahead ?? 0) - (b.interval_to_position_ahead ?? 0))
       // Look for sequences where successive gap <= 1s
       const chain: number[] = []
       const gaps: number[] = []
@@ -465,7 +466,7 @@ export function useInsights(
       icon: '🚂',
       title: 'DRS Train Detected',
       description: `Detected a DRS train at ${first.lapSampleTime} with drivers ${first.drivers.join(', ')} within ~1s of each other.`,
-      type: 'pace',
+      type: 'pace' as const,
       accent: '#00C853',
     }
   }

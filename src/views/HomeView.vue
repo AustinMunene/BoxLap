@@ -1,64 +1,84 @@
 <template>
   <div class="home-view">
-    <!-- Hero Section -->
-    <section class="hero">
-      <div class="hero-bg">
-        <div class="hero-grid"></div>
-      </div>
-      <div class="container">
-        <div class="hero-content" v-motion-fade-visible>
-          <div class="hero-badge">2025 SEASON</div>
+    <section class="hero-section">
+      <div class="hero-glow" aria-hidden="true" />
+      <div class="container hero-inner">
+        <div class="hero-left" v-motion-fade-visible>
+          <div class="season-badge">{{ seasonStore.selectedSeason }} Season</div>
           <h1 class="hero-title">
             Understand F1<br />
-            <span class="hero-accent">like never before</span>
+            <span class="hero-title--accent">like never before</span>
           </h1>
           <p class="hero-subtitle">
-            Race data, lap times, and strategic insights - made for fans, not just analysts.
+            Race data, lap times, and strategic insights —<br />made for fans, not just analysts.
           </p>
+
+          <div class="leader-chip" v-if="championshipLeader">
+            <span class="leader-label">Championship Leader</span>
+            <span class="leader-name" :style="{ color: leaderTeamColor }">
+              {{ championshipLeader.Driver.code }}
+            </span>
+            <span class="leader-pts">{{ championshipLeader.points }} pts</span>
+          </div>
+
           <div class="hero-actions">
             <router-link to="/drivers" class="btn-primary">Explore Standings</router-link>
-            <router-link to="/predict" class="btn-secondary">Race Predictor</router-link>
+            <router-link :to="telemetryLink" class="btn-secondary">Telemetry Deep Dive</router-link>
           </div>
         </div>
 
-        <!-- Next Sessions Countdown (Box Box-style) -->
-        <div class="countdown-card glass-card" v-if="seasonStore.nextRace">
-          <div class="countdown-header">
-            <span class="next-label">{{ activeSession ? 'NEXT SESSION' : 'NEXT RACE' }}</span>
-            <span class="flag">{{ getCircuitFlag(seasonStore.nextRace.Circuit.Location.country) }}</span>
-          </div>
-          <h2 class="next-race-name">{{ seasonStore.nextRace.raceName }}</h2>
-          <p class="next-circuit">
-            {{ seasonStore.nextRace.Circuit.circuitName }}, {{ seasonStore.nextRace.Circuit.Location.locality }}
-          </p>
+        <div class="hero-right">
+          <div class="glass-card next-session-card" v-if="seasonStore.nextRace">
+            <div class="countdown-header">
+              <span class="next-label">{{ activeSession ? 'NEXT SESSION' : 'NEXT RACE' }}</span>
+              <span class="flag">{{ getCircuitFlag(seasonStore.nextRace.Circuit.Location.country) }}</span>
+            </div>
+            <h2 class="next-race-name">{{ seasonStore.nextRace.raceName }}</h2>
+            <p class="next-circuit">
+              {{ seasonStore.nextRace.Circuit.circuitName }}, {{ seasonStore.nextRace.Circuit.Location.locality }}
+            </p>
 
-          <CountdownTimer v-if="nextSessionDateTime" :targetDate="nextSessionDateTime" />
+            <CountdownTimer v-if="nextSessionDateTime" :targetDate="nextSessionDateTime" />
 
-          <div v-if="weekendSessions.length" class="session-list">
-            <div
-              v-for="session in weekendSessionsSorted"
-              :key="session.session_key"
-              class="session-row"
-              :class="sessionStatus(session)"
-            >
-              <div class="session-day font-data">
-                {{ formatSessionDay(session.date_start) }}
-              </div>
-              <div class="session-name">
-                {{ session.session_name }}
-              </div>
-              <div class="session-time font-data">
-                {{ formatSessionTime(session.date_start) }}
-                <span v-if="isToday(session.date_start)" class="session-today">today</span>
+            <div v-if="weekendSessions.length" class="session-list">
+              <div
+                v-for="session in weekendSessionsSorted"
+                :key="session.session_key"
+                class="session-row"
+                :class="sessionStatus(session)"
+              >
+                <div class="session-day font-data">
+                  {{ formatSessionDay(session.date_start) }}
+                </div>
+                <div class="session-name">
+                  {{ session.session_name }}
+                </div>
+                <div class="session-time font-data">
+                  {{ formatSessionTime(session.date_start) }}
+                  <span v-if="isToday(session.date_start)" class="session-today">today</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <p class="next-date" v-else>{{ formatDate(seasonStore.nextRace.date) }}</p>
+            <p class="next-date" v-else>{{ formatDate(seasonStore.nextRace.date) }}</p>
+          </div>
+          <div class="glass-card next-session-card skeleton-card" v-else-if="seasonStore.loading">
+            <SkeletonBlock height="120px" />
+          </div>
         </div>
-        <div class="countdown-card glass-card skeleton-card" v-else-if="seasonStore.loading">
-          <SkeletonBlock height="120px" />
-        </div>
+      </div>
+    </section>
+
+    <!-- Season in numbers -->
+    <section class="season-numbers-strip container" v-if="!seasonStore.loading && seasonStats.length">
+      <div
+        class="number-chip glass-card glass-card--static"
+        v-for="stat in seasonStats"
+        :key="stat.label"
+      >
+        <span class="number-chip-icon">{{ stat.icon }}</span>
+        <span class="number-chip-value stat-number">{{ stat.value }}</span>
+        <span class="number-chip-label">{{ stat.label }}</span>
       </div>
     </section>
 
@@ -78,31 +98,34 @@
 
       <div class="recap-grid">
         <!-- Podium -->
-        <div class="glass-card podium-card">
+        <div class="glass-card glass-card--static podium-wrap" v-if="lastRace">
           <h3 class="card-title">Podium</h3>
-          <div class="podium">
-            <div v-for="pos in [1,2,3]" :key="pos" class="podium-item">
-              <span class="podium-pos" :class="`pos-${pos}`">{{ pos }}</span>
-              <div v-if="getResult(pos)">
-                <div class="podium-name">{{ getResult(pos)?.Driver.givenName }} {{ getResult(pos)?.Driver.familyName }}</div>
-                <div class="podium-team" :style="{ color: getTeamColor(getResult(pos)?.Constructor.name || '') }">
-                  {{ getResult(pos)?.Constructor.name }}
-                </div>
-                <div class="podium-time font-data">{{ getResult(pos)?.Time?.time || getResult(pos)?.status }}</div>
+          <router-link
+            v-for="pos in [1, 2, 3]"
+            :key="pos"
+            :to="`/race/${lastRace.race.season}/${lastRace.race.round}`"
+            class="podium-card"
+          >
+            <span class="podium-position" :class="`podium-position--${pos}`">{{ pos }}</span>
+            <div v-if="getResult(pos)" class="podium-body">
+              <div class="podium-name">{{ getResult(pos)?.Driver.givenName }} {{ getResult(pos)?.Driver.familyName }}</div>
+              <div class="podium-team" :style="{ color: getTeamColor(getResult(pos)?.Constructor.name || '') }">
+                {{ getResult(pos)?.Constructor.name }}
               </div>
+              <div class="podium-time font-data">{{ getResult(pos)?.Time?.time || getResult(pos)?.status }}</div>
             </div>
-          </div>
+          </router-link>
         </div>
 
         <!-- Quick Stats -->
-        <div class="glass-card stats-card">
+        <div class="glass-card glass-card--static stats-card">
           <h3 class="card-title">Race Highlights</h3>
           <div class="stats-list">
             <div class="stat-item" v-if="fastestLap">
               <span class="stat-icon">⚡</span>
               <div>
                 <div class="stat-label">Fastest Lap</div>
-                <div class="stat-value font-data">{{ fastestLap.Driver.code }} — {{ fastestLap.FastestLap?.Time.time }}</div>
+                <div class="stat-value font-data">{{ fastestLap.Driver.code }} - {{ fastestLap.FastestLap?.Time.time }}</div>
               </div>
             </div>
             <div class="stat-item" v-if="biggestMoverResult">
@@ -149,7 +172,7 @@
 
       <div v-else class="standings-grid">
         <!-- Driver Standings -->
-        <div class="glass-card standings-card">
+        <div class="glass-card glass-card--static standings-card">
           <h3 class="card-title">Drivers</h3>
           <div class="standings-table">
             <div
@@ -157,11 +180,11 @@
               :key="standing.Driver.driverId"
               class="standing-row"
             >
-              <span class="standing-pos font-data">{{ standing.position }}</span>
               <div
-                class="team-strip"
+                class="standing-team-strip"
                 :style="{ background: getTeamColor(standing.Constructors[0]?.name || '') }"
-              ></div>
+              />
+              <span class="standing-pos font-data">{{ standing.position }}</span>
               <div class="standing-driver">
                 <span class="driver-code font-data">{{ standing.Driver.code }}</span>
                 <span class="driver-name-small">{{ standing.Driver.familyName }}</span>
@@ -172,7 +195,7 @@
         </div>
 
         <!-- Constructor Standings -->
-        <div class="glass-card standings-card">
+        <div class="glass-card glass-card--static standings-card">
           <h3 class="card-title">Constructors</h3>
           <div class="standings-table">
             <div
@@ -180,11 +203,11 @@
               :key="standing.Constructor.constructorId"
               class="standing-row"
             >
-              <span class="standing-pos font-data">{{ standing.position }}</span>
               <div
-                class="team-strip"
+                class="standing-team-strip"
                 :style="{ background: getTeamColor(standing.Constructor.name) }"
-              ></div>
+              />
+              <span class="standing-pos font-data">{{ standing.position }}</span>
               <div class="standing-driver">
                 <span class="constructor-name" :style="{ color: getTeamColor(standing.Constructor.name) }">
                   {{ standing.Constructor.name }}
@@ -201,50 +224,170 @@
     <section class="section container">
       <div class="section-header">
         <h2 class="section-title">Season Schedule</h2>
-        <span class="section-sub">{{ seasonStore.currentYear }}</span>
+        <span class="section-sub">{{ seasonStore.selectedSeason }}</span>
       </div>
       <div v-if="seasonStore.loading">
         <SkeletonBlock height="200px" />
       </div>
       <div v-else class="schedule-grid">
-        <router-link
+        <div
           v-for="race in seasonStore.schedule"
           :key="race.round"
-          :to="`/race/${race.season}/${race.round}`"
-          class="schedule-item glass-card"
-          :class="{ past: isPast(race.date), upcoming: !isPast(race.date) }"
+          class="schedule-card glass-card"
+          :class="{
+            'schedule-card--completed': getRaceAvailability(race.date, seasonStore.selectedSeason) === 'available',
+            'schedule-card--today': getRaceAvailability(race.date, seasonStore.selectedSeason) === 'today',
+            'schedule-card--upcoming': getRaceAvailability(race.date, seasonStore.selectedSeason) === 'upcoming',
+            'schedule-card--next': race.round === seasonStore.nextRace?.round,
+          }"
+          @click="
+            getRaceAvailability(race.date, seasonStore.selectedSeason) === 'available'
+              ? router.push(`/race/${race.season}/${race.round}`)
+              : null
+          "
         >
-          <div class="schedule-round font-data">R{{ race.round }}</div>
-          <div class="schedule-flag">{{ getCircuitFlag(race.Circuit.Location.country) }}</div>
-          <div class="schedule-info">
-            <div class="schedule-name">{{ race.raceName.replace(' Grand Prix', ' GP') }}</div>
-            <div class="schedule-date">{{ formatDate(race.date) }}</div>
-          </div>
-          <div class="schedule-arrow">→</div>
-        </router-link>
+          <span class="race-round font-data">R{{ race.round }}</span>
+          <span class="race-flag">{{ getCircuitFlag(race.Circuit.Location.country) }}</span>
+          <span class="race-name">{{ race.raceName.replace(' Grand Prix', ' GP') }}</span>
+          <span class="race-date">{{ formatDate(race.date) }}</span>
+          <span
+            v-if="getRaceAvailability(race.date, seasonStore.selectedSeason) === 'today'"
+            class="race-status race-status--live"
+            >● LIVE</span
+          >
+          <span v-if="race.round === seasonStore.nextRace?.round" class="race-status race-status--next">NEXT</span>
+        </div>
       </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useSeasonStore } from '@/stores/seasonStore'
 import { getTeamColor, getCircuitFlag } from '@/constants/teams'
 import CountdownTimer from '@/components/ui/CountdownTimer.vue'
 import SkeletonBlock from '@/components/ui/SkeletonBlock.vue'
-import { getUpcomingWeekendSessions } from '@/api/telemetry'
+import { getUpcomingWeekendSessions } from '@/api/openf1'
 import type { Session } from '@/api/openf1'
+import { getAllRaceResultsForSeason } from '@/api/ergast'
+import type { ErgastRaceResult } from '@/api/ergast'
+import { getRaceAvailability } from '@/utils/raceAvailability'
 
+const router = useRouter()
 const seasonStore = useSeasonStore()
 const weekendSessions = ref<Session[]>([])
 
+const allSeasonRacesPayload = ref<{
+  MRData?: { RaceTable?: { Races: Array<{ round: string; Results?: ErgastRaceResult[] }> } }
+} | null>(null)
+
+watch(
+  () => seasonStore.selectedSeason,
+  async y => {
+    try {
+      allSeasonRacesPayload.value = (await getAllRaceResultsForSeason(y)) as typeof allSeasonRacesPayload.value
+    } catch {
+      allSeasonRacesPayload.value = null
+    }
+  },
+  { immediate: true }
+)
+
+/**
+ * Ergast race time string "M:SS.sss" or "SSS.sss" → seconds.
+ */
+function raceTimeToSeconds(t: string | undefined): number | null {
+  if (!t) return null
+  const clean = t.trim()
+  const parts = clean.split(':')
+  if (parts.length === 2) {
+    const mins = parseInt(parts[0], 10)
+    const secs = parseFloat(parts[1])
+    if (Number.isFinite(mins) && Number.isFinite(secs)) return mins * 60 + secs
+  }
+  const n = parseFloat(clean)
+  return Number.isFinite(n) ? n : null
+}
+
+const completedRaces = computed(() =>
+  seasonStore.schedule.filter(r => getRaceAvailability(r.date, seasonStore.selectedSeason) === 'available')
+)
+
+const seasonStats = computed(() => {
+  const races = allSeasonRacesPayload.value?.MRData?.RaceTable?.Races || []
+  const completedRounds = new Set(completedRaces.value.map(r => String(r.round)))
+
+  const winners = new Set<string>()
+  let bestGap: number | null = null
+  let bestMover = 0
+
+  for (const raceEntry of races) {
+    if (!completedRounds.has(String(raceEntry.round))) continue
+    const res = raceEntry.Results
+    if (!res?.length) continue
+
+    const p1 = res.find(r => r.position === '1')
+    if (p1) winners.add(p1.Driver.code)
+
+    const r1 = res.find(r => r.position === '1')
+    const r2 = res.find(r => r.position === '2')
+    const t1 = raceTimeToSeconds(r1?.Time?.time)
+    const t2 = raceTimeToSeconds(r2?.Time?.time)
+    if (t1 != null && t2 != null) {
+      const gap = Math.abs(t2 - t1)
+      if (bestGap == null || gap < bestGap) bestGap = gap
+    }
+
+    for (const row of res) {
+      if (row.status !== 'Finished') continue
+      const g = parseInt(row.grid, 10)
+      const p = parseInt(row.position, 10)
+      if (!Number.isFinite(g) || !Number.isFinite(p) || g <= 0) continue
+      const mov = g - p
+      if (mov > bestMover) bestMover = mov
+    }
+  }
+
+  return [
+    { icon: '🏁', value: completedRaces.value.length, label: 'Races complete' },
+    { icon: '🏎️', value: winners.size, label: 'Different winners' },
+    {
+      icon: '⚡',
+      value: bestGap != null ? `${bestGap.toFixed(3)}s` : '—',
+      label: 'Closest finish',
+    },
+    { icon: '📈', value: bestMover > 0 ? `+${bestMover}` : '—', label: 'Most positions gained' },
+  ]
+})
+
+const championshipLeader = computed(() => seasonStore.driverStandings[0] ?? null)
+
+const leaderTeamColor = computed(() =>
+  getTeamColor(championshipLeader.value?.Constructors[0]?.name || '')
+)
+
 onMounted(async () => {
-  seasonStore.loadCurrentSeason()
   weekendSessions.value = await getUpcomingWeekendSessions()
 })
 
 const lastRace = computed(() => seasonStore.lastRaceResults)
+
+/**
+ * Computes a safe Telemetry route for the most recent race.
+ *
+ * Data source: SeasonStore schedule + last race results (Ergast).
+ *
+ * Why: TelemetryView requires `:season/:round`. We prefer sending fans to the latest race
+ * instead of hardcoding a placeholder route in multiple places.
+ *
+ * Returns: Vue Router path like `/telemetry/2025/3`.
+ */
+const telemetryLink = computed(() => {
+  const round = seasonStore.lastRaceResults?.race?.round ?? '1'
+  return `/telemetry/${seasonStore.selectedSeason}/${round}`
+})
 
 const weekendSessionsSorted = computed(() =>
   [...weekendSessions.value].sort(
@@ -295,10 +438,6 @@ function formatDate(dateStr: string): string {
   })
 }
 
-function isPast(dateStr: string): boolean {
-  return new Date(dateStr) < new Date()
-}
-
 function formatSessionDay(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', {
     weekday: 'short',
@@ -340,121 +479,149 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
   padding-bottom: 4rem;
 }
 
-/* Hero */
-.hero {
-  position: relative;
-  padding: 5rem 0 3rem;
-  overflow: hidden;
-}
-
-.hero-bg {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.hero-grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(232, 0, 45, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(232, 0, 45, 0.04) 1px, transparent 1px);
-  background-size: 40px 40px;
-  mask-image: linear-gradient(to bottom, transparent, rgba(0,0,0,0.6) 30%, rgba(0,0,0,0.6) 70%, transparent);
-}
-
 .container {
   max-width: 1280px;
   margin: 0 auto;
   padding: 0 1.5rem;
 }
 
-.hero .container {
+/* Hero */
+.hero-section {
+  position: relative;
+  padding: 80px 0 48px;
+  overflow: hidden;
+}
+
+.hero-glow {
+  position: absolute;
+  top: -100px;
+  left: -200px;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(232, 0, 45, 0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.hero-inner {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 3rem;
+  grid-template-columns: 1fr 400px;
+  gap: 48px;
   align-items: center;
   position: relative;
   z-index: 1;
 }
 
-.hero-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.25rem 0.75rem;
-  border: 1px solid rgba(232, 0, 45, 0.4);
-  border-radius: 4px;
-  font-size: 0.7rem;
+.season-badge {
+  display: inline-block;
+  background: rgba(232, 0, 45, 0.12);
+  border: 1px solid rgba(232, 0, 45, 0.25);
+  color: #e8002d;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.15em;
-  color: #E8002D;
-  margin-bottom: 1.25rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  margin-bottom: 24px;
 }
 
 .hero-title {
-  font-size: 3.5rem;
+  font-size: clamp(40px, 5vw, 64px);
   font-weight: 900;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  margin-bottom: 1rem;
+  line-height: 1.05;
   color: #fff;
+  margin-bottom: 16px;
+  font-family: 'Titillium Web', sans-serif;
 }
 
-.hero-accent {
-  color: #E8002D;
+.hero-title--accent {
+  color: #e8002d;
+  display: block;
 }
 
 .hero-subtitle {
-  font-size: 1.1rem;
-  color: #888;
-  margin-bottom: 2rem;
-  max-width: 480px;
+  font-size: 17px;
+  color: #666;
   line-height: 1.6;
+  margin-bottom: 28px;
+  max-width: 520px;
+}
+
+.leader-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 10px 16px;
+  margin-bottom: 28px;
+  font-size: 14px;
+}
+
+.leader-label {
+  color: #555;
+}
+
+.leader-name {
+  font-weight: 800;
+  font-family: 'DM Mono', monospace;
+}
+
+.leader-pts {
+  color: #888;
 }
 
 .hero-actions {
   display: flex;
-  gap: 1rem;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .btn-primary {
-  padding: 0.75rem 1.75rem;
-  background: #E8002D;
+  padding: 14px 28px;
+  background: #e8002d;
   color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
   font-weight: 700;
-  border-radius: 8px;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  font-family: 'Titillium Web', sans-serif;
   text-decoration: none;
-  font-size: 0.875rem;
-  letter-spacing: 0.04em;
-  transition: opacity 0.15s, transform 0.15s;
+  display: inline-block;
 }
 
 .btn-primary:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
+  background: #ff1a3d;
+  box-shadow: var(--glow-red-strong);
+  transform: translateY(-2px);
 }
 
 .btn-secondary {
-  padding: 0.75rem 1.75rem;
-  background: rgba(255,255,255,0.06);
+  padding: 14px 28px;
+  background: transparent;
   color: #fff;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  font-size: 15px;
   font-weight: 700;
-  border-radius: 8px;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  font-family: 'Titillium Web', sans-serif;
   text-decoration: none;
-  font-size: 0.875rem;
-  border: 1px solid rgba(255,255,255,0.12);
-  transition: background 0.15s;
+  display: inline-block;
 }
 
 .btn-secondary:hover {
-  background: rgba(255,255,255,0.1);
+  background: var(--glass-bg);
+  border-color: var(--glass-border-hover);
+  transform: translateY(-2px);
 }
 
-/* Countdown */
-.countdown-card {
-  padding: 1.5rem;
+.next-session-card {
+  padding: 28px;
   min-width: 280px;
   max-width: 320px;
 }
@@ -585,6 +752,37 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
 
 .view-all-link:hover { opacity: 0.75; }
 
+/* Season numbers strip */
+.season-numbers-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 40px auto 0;
+}
+
+.number-chip {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.number-chip-icon {
+  font-size: 22px;
+}
+
+.number-chip-value {
+  font-size: 28px;
+}
+
+.number-chip-label {
+  font-size: 12px;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
 /* Recap */
 .recap-grid {
   display: grid;
@@ -592,8 +790,9 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
   gap: 1rem;
 }
 
-.podium-card, .stats-card {
-  padding: 1.5rem;
+.podium-wrap,
+.stats-card {
+  padding: 20px 24px;
 }
 
 .card-title {
@@ -605,34 +804,62 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
   margin-bottom: 1rem;
 }
 
-.podium {
-  display: flex;
-  flex-direction: column;
-  gap: 0.875rem;
-}
-
-.podium-item {
+.podium-card {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 16px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  text-decoration: none;
+  color: inherit;
+  transition: var(--transition-smooth);
+  cursor: pointer;
 }
 
-.podium-pos {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+.podium-card:last-child {
+  margin-bottom: 0;
+}
+
+.podium-card:hover {
+  background: var(--glass-bg-hover);
+  border-color: var(--glass-border-hover);
+  transform: translateX(4px);
+}
+
+.podium-position {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
-  font-size: 0.8rem;
-  font-family: 'DM Mono', monospace;
+  font-weight: 900;
+  font-size: 14px;
   flex-shrink: 0;
 }
 
-.pos-1 { background: #FFD700; color: #000; }
-.pos-2 { background: #C0C0C0; color: #000; }
-.pos-3 { background: #CD7F32; color: #000; }
+.podium-position--1 {
+  background: #ffd700;
+  color: #000;
+}
+
+.podium-position--2 {
+  background: #c0c0c0;
+  color: #000;
+}
+
+.podium-position--3 {
+  background: #cd7f32;
+  color: #000;
+}
+
+.podium-body {
+  flex: 1;
+  min-width: 0;
+}
 
 .podium-name {
   font-size: 0.9rem;
@@ -700,11 +927,21 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
 }
 
 .standing-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.625rem 0;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  gap: 12px;
+  padding: 10px 16px 10px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.standing-team-strip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
 }
 
 .standing-row:last-child {
@@ -716,13 +953,6 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
   text-align: center;
   font-size: 0.75rem;
   color: #555;
-}
-
-.team-strip {
-  width: 3px;
-  height: 22px;
-  border-radius: 2px;
-  flex-shrink: 0;
 }
 
 .standing-driver {
@@ -758,67 +988,136 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
 /* Schedule */
 .schedule-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
 }
 
-.schedule-item {
-  display: flex;
+.schedule-card {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.875rem 1rem;
-  text-decoration: none;
-  color: inherit;
-  transition: transform 0.15s;
+  gap: 0.25rem 0.5rem;
+  padding: 16px;
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  transition: var(--transition-smooth);
 }
 
-.schedule-item:hover {
-  transform: translateY(-2px);
+.schedule-card--completed {
+  cursor: pointer;
+  opacity: 0.65;
 }
 
-.schedule-item.past {
-  opacity: 0.5;
+.schedule-card--completed:hover {
+  opacity: 1;
+  background: var(--glass-bg-hover);
+  border-color: var(--glass-border-hover);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
 }
 
-.schedule-round {
-  font-size: 0.7rem;
-  color: #555;
+.schedule-card--completed::after {
+  content: '✓';
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 11px;
+  color: #333;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  min-width: 24px;
 }
 
-.schedule-flag {
+.schedule-card--next {
+  border-color: rgba(232, 0, 45, 0.4) !important;
+  opacity: 1;
+  background: rgba(232, 0, 45, 0.05);
+  box-shadow: var(--glow-red);
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+.schedule-card--next::after {
+  content: none;
+}
+
+.schedule-card--upcoming {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+
+.schedule-card--today {
+  opacity: 1;
+  border-color: rgba(0, 200, 83, 0.35);
+}
+
+@keyframes pulse-border {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(232, 0, 45, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(232, 0, 45, 0.15);
+  }
+}
+
+.race-round {
+  font-size: 10px;
+  font-weight: 700;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  grid-column: 1;
+}
+
+.race-flag {
   font-size: 1.25rem;
+  grid-column: 2;
 }
 
-.schedule-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.schedule-name {
-  font-size: 0.8rem;
+.race-name {
+  font-size: 13px;
   font-weight: 600;
+  color: #fff;
+  display: block;
+  margin-bottom: 4px;
+  grid-column: 3 / -1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.schedule-date {
-  font-size: 0.7rem;
+.race-date {
+  font-size: 11px;
   color: #555;
   font-family: 'DM Mono', monospace;
+  grid-column: 1 / 4;
 }
 
-.schedule-arrow {
-  color: #555;
-  font-size: 0.875rem;
-  transition: color 0.15s;
+.race-status {
+  grid-column: 4;
+  grid-row: 1 / span 2;
+  justify-self: end;
+  align-self: start;
 }
 
-.schedule-item:hover .schedule-arrow {
-  color: #E8002D;
+.race-status--live {
+  color: #00c853;
+  font-size: 10px;
+  font-weight: 800;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.race-status--next {
+  color: #e8002d;
+  font-size: 10px;
+  font-weight: 800;
 }
 
 .skeleton-card {
@@ -826,21 +1125,21 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
 }
 
 @media (max-width: 900px) {
-  .hero .container {
+  .hero-inner {
     grid-template-columns: 1fr;
   }
 
-  .countdown-card {
+  .next-session-card {
     max-width: 100%;
-  }
-
-  .hero-title {
-    font-size: 2.5rem;
   }
 
   .recap-grid,
   .standings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .season-numbers-strip {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -851,6 +1150,10 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
 
   .schedule-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .season-numbers-strip {
+    grid-template-columns: 1fr;
   }
 }
 </style>

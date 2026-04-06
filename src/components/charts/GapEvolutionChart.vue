@@ -19,6 +19,7 @@ import {
   Legend,
   Filler,
 } from 'chart.js'
+import type { IntervalData } from '@/types/openf1'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler)
 
@@ -31,7 +32,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
  * the chart responsive in the browser.
  */
 const props = defineProps<{
-  intervals: any[]
+  intervals: IntervalData[]
   scLaps?: number[]
 }>()
 
