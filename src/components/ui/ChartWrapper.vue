@@ -5,6 +5,8 @@
   error state, and optional AI one-liner slot.
 -->
 <script setup lang="ts">
+import StartLightsLoader from '@/components/ui/StartLightsLoader.vue'
+
 const props = withDefaults(
   defineProps<{
     title: string
@@ -31,6 +33,9 @@ const props = withDefaults(
     </div>
 
     <div v-if="props.loading" class="chart-skeleton">
+      <div class="skeleton-lights">
+        <StartLightsLoader label="Loading data" />
+      </div>
       <div class="skeleton-bars">
         <div
           v-for="i in 12"
@@ -92,11 +97,23 @@ const props = withDefaults(
 .chart-skeleton {
   height: 280px;
   display: flex;
-  align-items: flex-end;
-  gap: 6px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
   padding: 16px;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 8px;
+}
+
+.skeleton-lights {
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.chart-skeleton .skeleton-bars {
+  flex: 1;
+  min-height: 0;
 }
 
 .skeleton-bars {
@@ -175,5 +192,23 @@ const props = withDefaults(
   color: #e8002d;
   font-size: 13px;
   cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .chart-wrapper {
+    padding: 16px;
+  }
+
+  .chart-wrapper :deep(canvas) {
+    max-width: 100% !important;
+  }
+
+  .chart-skeleton {
+    height: 200px;
+  }
+
+  .insight-text {
+    font-size: 13px;
+  }
 }
 </style>

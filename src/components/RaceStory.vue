@@ -3,10 +3,13 @@
   Renders the Gemini-generated race narrative as story cards (Insights tab).
 -->
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { generateRaceStory, type RaceStats } from '@/api/claudeInsights'
+import { ref, watch, computed } from 'vue'
+import { generateRaceStory, isRaceStatsComplete, type RaceStats } from '@/api/claudeInsights'
+import { useRaceStore } from '@/stores/raceStore'
 
-const props = defineProps<{ raceStats: RaceStats }>()
+const props = defineProps<{ raceStats: RaceStats | null }>()
+
+const store = useRaceStore()
 
 const stories = ref<{ headline: string; body: string }[]>([])
 const loading = ref(true)
@@ -14,9 +17,38 @@ const error = ref('')
 
 const borderColors = ['#f97316', '#14b8a6', '#22c55e', '#e8002d', '#3b82f6']
 
-onMounted(async () => {
+const lapsLoaded = computed(() => Object.keys(store.laps).length)
+
+const readyToGenerateStory = computed(
+  () =>
+    store.results.length > 0 &&
+    Object.keys(store.laps).length >= Math.min(10, Math.max(store.results.length, 1)) &&
+    store.stints.length > 0 &&
+    store.pits.length > 0
+)
+
+async function runStory() {
+  const stats = props.raceStats
+  if (!stats || !readyToGenerateStory.value) {
+    loading.value = false
+    return
+  }
+  if (!isRaceStatsComplete(stats)) {
+    error.value =
+      'Race story needs a full data snapshot (pace ranking and strategies). Load laps for at least 10 drivers first.'
+    loading.value = false
+    return
+  }
+  loading.value = true
+  error.value = ''
   try {
-    stories.value = await generateRaceStory(props.raceStats)
+    const out = await generateRaceStory(stats)
+    if (out == null) {
+      error.value = 'Race story is not ready yet — try again in a moment.'
+      stories.value = []
+    } else {
+      stories.value = out
+    }
   } catch (e) {
     error.value =
       e instanceof Error
@@ -27,7 +59,30 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-})
+}
+
+function retryStory() {
+  void runStory()
+}
+
+watch(
+  () => [props.raceStats, readyToGenerateStory.value] as const,
+  () => {
+    if (!props.raceStats) {
+      stories.value = []
+      loading.value = true
+      error.value = ''
+      return
+    }
+    if (!readyToGenerateStory.value) {
+      loading.value = true
+      error.value = ''
+      return
+    }
+    void runStory()
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -38,7 +93,15 @@ onMounted(async () => {
       <div v-for="i in 5" :key="i" class="story-skeleton-line" />
     </div>
 
-    <p v-else-if="error" class="story-error-muted">{{ error }}</p>
+    <div v-else-if="error" class="story-unavailable">
+      <p>
+        {{ error }}
+        <span v-if="lapsLoaded < 10">
+          Currently loaded: {{ lapsLoaded }} drivers.
+          <button type="button" class="retry-link" @click="retryStory">Try again</button>
+        </span>
+      </p>
+    </div>
 
     <div v-else class="story-grid">
       <article
@@ -79,12 +142,21 @@ onMounted(async () => {
   animation: pulse 1.2s infinite ease-in-out;
 }
 
-.story-error-muted {
-  font-size: 0.75rem;
-  font-style: italic;
-  color: #6b7280;
-  margin: 0;
-  text-align: right;
+.story-unavailable {
+  font-size: 0.9rem;
+  color: #9ca3af;
+  line-height: 1.5;
+}
+
+.retry-link {
+  margin-left: 0.35rem;
+  background: none;
+  border: none;
+  color: #e8002d;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
 }
 
 .story-grid {

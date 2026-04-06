@@ -32,6 +32,7 @@ export function usePostRacePipeline(
   const raceStats = ref<RaceStats | null>(null)
   const scLaps = ref<number[]>([])
   const vscLaps = ref<number[]>([])
+  const championshipStandingsSummary = ref('Championship standings unavailable.')
 
   /** Re-run when navigating to another race (new OpenF1 session key). */
   let lastProcessedSessionKey = 0
@@ -43,10 +44,10 @@ export function usePostRacePipeline(
       if (!sk || sk <= 0) return
       if (lastProcessedSessionKey === sk) return
       lastProcessedSessionKey = sk
+      raceStats.value = null
 
     try {
       const seasonN = toValue(season)
-      const roundN = toValue(round)
       /**
        * Important: RaceView already calls `store.loadRace()` via `useRaceData`.
        * Calling it again here doubles OpenF1 traffic (and causes 429 storms).
@@ -72,24 +73,18 @@ export function usePostRacePipeline(
       progress.value = 55
 
       // Step 3 - championship snapshot for Gemini (non-fatal if Ergast fails)
-      let championshipStandingsSummary = 'Championship standings unavailable.'
+      championshipStandingsSummary.value = 'Championship standings unavailable.'
       try {
         const ds = (await getDriverStandings(seasonN)) as {
           MRData?: { StandingsTable?: { StandingsLists?: Array<{ DriverStandings?: ErgastDriverStanding[] }> } }
         }
         const rows = ds?.MRData?.StandingsTable?.StandingsLists?.[0]?.DriverStandings ?? []
-        championshipStandingsSummary = formatChampionshipSnapshot(rows)
+        championshipStandingsSummary.value = formatChampionshipSnapshot(rows)
       } catch {
         // Ergast can fail independently of OpenF1; story generation still works without standings.
       }
 
-      // Step 4 - compute the raceStats summary for Gemini (venue, weather, standings injected here)
-      raceStats.value = computeRaceStats(store, seasonN, roundN, scLaps.value, championshipStandingsSummary)
       progress.value = 100
-
-      // Step 6 - fire off Gemini race story in the UI (RaceStory) when props are ready
-      // We'll leave it to the RaceStory component to call generateRaceStory when
-      // and if it receives a non-null raceStats object.
     } catch (e) {
       error.value = 'Failed to load race data. Please try again.'
       // eslint-disable-next-line no-console
@@ -99,6 +94,53 @@ export function usePostRacePipeline(
     }
     },
     { immediate: true }
+  )
+
+  /**
+   * Race stats for Gemini only after laps, stints, and pits are present.
+   * RaceView loads laps asynchronously after loadRace; without this guard,
+   * raceStats was computed with empty laps and the story failed.
+   */
+  watch(
+    () => ({
+      sk: store.currentSession?.session_key ?? 0,
+      resultsLen: store.results.length,
+      lapDrivers: Object.keys(store.laps).length,
+      stintsLen: store.stints.length,
+      pitsLen: store.pits.length,
+      champ: championshipStandingsSummary.value,
+    }),
+    () => {
+      const sk = store.currentSession?.session_key
+      if (!sk || sk <= 0) return
+      const seasonN = toValue(season)
+      const roundN = toValue(round)
+      const needLaps = Math.min(10, Math.max(store.results.length, 1))
+      const ready =
+        store.results.length > 0 &&
+        Object.keys(store.laps).length >= needLaps &&
+        store.stints.length > 0 &&
+        store.pits.length > 0
+      if (!ready) {
+        raceStats.value = null
+        return
+      }
+      try {
+        scLaps.value = parseSafetyCarLaps(store.raceControl)
+        raceStats.value = computeRaceStats(
+          store,
+          seasonN,
+          roundN,
+          scLaps.value,
+          championshipStandingsSummary.value
+        )
+      } catch (e) {
+        raceStats.value = null
+        // eslint-disable-next-line no-console
+        console.error('usePostRacePipeline computeRaceStats:', e)
+      }
+    },
+    { deep: true, immediate: true }
   )
 
   return { loading, error, progress, raceStats, scLaps, vscLaps }
@@ -358,6 +400,7 @@ function computeRaceStats(
   return {
     raceName,
     season,
+    round,
     winner: winnerName,
     winnerTeam,
     totalLaps,

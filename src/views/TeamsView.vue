@@ -137,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Bar } from 'vue-chartjs'
 import {
@@ -302,11 +302,13 @@ const pitChartOptions = {
   }
 }
 
-onMounted(() => {
-  if (!seasonStore.constructorStandings.length) {
-    seasonStore.loadCurrentSeason()
-  }
-})
+watch(
+  () => seasonStore.selectedSeason,
+  async () => {
+    await seasonStore.loadCurrentSeason()
+  },
+  { immediate: true }
+)
 
 watch(
   () => seasonStore.constructorStandings,
@@ -616,5 +618,45 @@ watch(
   text-align: center;
   color: #555;
   font-size: 0.875rem;
+}
+
+@media (max-width: 768px) {
+  .team-accordion {
+    grid-template-columns: 48px 1fr auto 32px;
+    gap: 12px;
+    padding: 16px var(--page-padding, 16px);
+  }
+
+  .team-acc-nationality {
+    display: none;
+  }
+
+  .team-acc-name {
+    font-size: 15px;
+  }
+
+  .team-acc-right {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .team-acc-pts {
+    margin-bottom: 0;
+  }
+
+  .contrib-bar-track {
+    width: 100%;
+    min-width: 100px;
+  }
+
+  .contrib-row {
+    gap: 6px;
+  }
+
+  .contrib-pts,
+  .contrib-pct {
+    font-size: 11px;
+  }
 }
 </style>

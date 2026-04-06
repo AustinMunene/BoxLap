@@ -32,6 +32,35 @@ import type { ErgastRaceResult } from '@/api/ergast'
  * @param samples - CarDataSample[] ordered by date ascending
  * @returns The same array with distance_m added to each sample
  */
+/**
+ * Resolves the OpenF1 race session for an Ergast round. Prefer `round_number`
+ * on the session row; never rely on array index alone.
+ */
+function resolveRaceSessionForRound(
+  sessionsData: Session[],
+  round: number,
+  ergastRaceDate: string | undefined
+): Session | null {
+  if (!sessionsData?.length) return null
+
+  const byRound = sessionsData.find(s => s.round_number === round)
+  if (byRound) return byRound
+
+  if (ergastRaceDate) {
+    const t = new Date(ergastRaceDate).getTime()
+    const sorted = [...sessionsData].sort(
+      (a, b) =>
+        Math.abs(new Date(a.date_start).getTime() - t) -
+        Math.abs(new Date(b.date_start).getTime() - t)
+    )
+    return sorted[0] ?? null
+  }
+
+  const idx = round - 1
+  if (idx >= 0 && idx < sessionsData.length) return sessionsData[idx] ?? null
+  return sessionsData[sessionsData.length - 1] ?? null
+}
+
 function computeDistanceFromSpeed(
   samples: CarDataSample[]
 ): Array<CarDataSample & { distance_m: number }> {
@@ -80,21 +109,23 @@ export const useRaceStore = defineStore('race', () => {
     error.value = null
     try {
       const ergastData = (await getRaceResults(season, round)) as {
-        MRData: { RaceTable: { Races: Array<{ Results: ErgastRaceResult[] }> } }
+        MRData: {
+          RaceTable: {
+            Races: Array<{ Results: ErgastRaceResult[]; date?: string; round?: string }>
+          }
+        }
       }
       const races = ergastData?.MRData?.RaceTable?.Races
+      let ergastRaceDate: string | undefined
       if (races && races.length > 0) {
         results.value = races[0].Results || []
+        ergastRaceDate = races[0].date
       }
 
       const sessionsData = (await getSessions(season)) as Session[]
       sessions.value = sessionsData || []
 
-      if (sessionsData && sessionsData.length >= round) {
-        currentSession.value = sessionsData[round - 1] || null
-      } else if (sessionsData && sessionsData.length > 0) {
-        currentSession.value = sessionsData[sessionsData.length - 1]
-      }
+      currentSession.value = resolveRaceSessionForRound(sessionsData || [], round, ergastRaceDate)
 
       if (currentSession.value) {
         const sk = currentSession.value.session_key

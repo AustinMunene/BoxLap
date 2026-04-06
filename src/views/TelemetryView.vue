@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import RacePaceComparison from '@/components/telemetry/RacePaceComparison.vue'
 import LapSummaryCard from '@/components/telemetry/LapSummaryCard.vue'
 import SpeedTrace from '@/components/telemetry/SpeedTrace.vue'
 import ThrottleTrace from '@/components/telemetry/ThrottleTrace.vue'
 import BrakeTrace from '@/components/telemetry/BrakeTrace.vue'
 import GearTrace from '@/components/telemetry/GearTrace.vue'
 import TelemetryStats from '@/components/telemetry/TelemetryStats.vue'
+import StartLightsLoader from '@/components/ui/StartLightsLoader.vue'
 import { useRaceStore } from '@/stores/raceStore'
 import { useSeasonStore } from '@/stores/seasonStore'
 import { getTeamColor } from '@/constants/teams'
@@ -27,12 +29,16 @@ const router = useRouter()
 const seasonStore = useSeasonStore()
 const store = useRaceStore()
 
-const isLoadingRace = ref(false)
 const raceLoadError = ref<string | null>(null)
 const isLoadingLaps = ref(false)
 const isLoadingTelemetry = ref(false)
 const telemetryError = ref<string | null>(null)
 const loadProgress = ref(0)
+
+/**
+ * Tracks race confirm UX: idle → load → ready (tap again) → confirmed (step 2).
+ */
+const confirmState = ref<'idle' | 'loading' | 'ready' | 'confirmed'>('idle')
 
 const raceConfirmed = ref(false)
 const driversConfirmed = ref(false)
@@ -148,6 +154,24 @@ const dataB = computed(() => {
 const driverAInfo = computed(() => driversByNumber.value.find(d => d.num === driverA.value) || null)
 const driverBInfo = computed(() => driversByNumber.value.find(d => d.num === driverB.value) || null)
 
+const lapsA = computed(() =>
+  driverA.value != null ? (store.laps[driverA.value] ?? []) : []
+)
+const lapsB = computed(() =>
+  driverB.value != null ? (store.laps[driverB.value] ?? []) : []
+)
+
+const racePaceDriverA = computed(() => {
+  const d = driverAInfo.value
+  if (!d) return null
+  return { name_acronym: d.code, team_name: d.team, color: d.color }
+})
+const racePaceDriverB = computed(() => {
+  const d = driverBInfo.value
+  if (!d) return null
+  return { name_acronym: d.code, team_name: d.team, color: d.color }
+})
+
 const lapDataA = computed((): Lap | null => {
   if (driverA.value == null || selectedLap.value == null) return null
   return store.laps[driverA.value]?.find(l => l.lap_number === selectedLap.value) ?? null
@@ -197,19 +221,39 @@ watch(
     selectedLap.value = null
     raceLoadError.value = null
     telemetryError.value = null
+    confirmState.value = 'idle'
     store.reset()
   },
   { immediate: true }
 )
 
 /**
- * User confirms race: only then we load OpenF1 race + driver list.
+ * User confirms race: first click loads OpenF1; second click (ready) advances to driver selection.
  */
 async function onRaceConfirmed() {
   if (selectedRound.value == null) return
+  if (confirmState.value === 'loading') return
 
-  telemetryError.value = null
+  if (confirmState.value === 'ready') {
+    confirmState.value = 'confirmed'
+    raceConfirmed.value = true
+    await nextTick()
+    return
+  }
+
+  if (isUpcomingRace.value) return
+
+  const isCompleted = completedRaces.value.some(
+    r => Number(r.round) === selectedRound.value
+  )
+  if (!isCompleted) {
+    raceLoadError.value = 'This race has not happened yet.'
+    return
+  }
+
+  confirmState.value = 'loading'
   raceLoadError.value = null
+  telemetryError.value = null
   driverA.value = null
   driverB.value = null
   selectedLap.value = null
@@ -217,17 +261,42 @@ async function onRaceConfirmed() {
   lapConfirmed.value = false
   store.reset()
 
-  isLoadingRace.value = true
   try {
     await store.loadRace(season.value, selectedRound.value)
     if (!store.currentSession?.session_key) throw new Error('Missing session')
     await router.push(`/telemetry/${season.value}/${selectedRound.value}`)
-    raceConfirmed.value = true
+
+    confirmState.value = 'ready'
+
+    const top2 = store.results.slice(0, 2)
+    if (top2[0]) {
+      const n = parseInt(top2[0].Driver.permanentNumber, 10)
+      if (!Number.isNaN(n)) driverA.value = n
+    }
+    if (top2[1]) {
+      const n = parseInt(top2[1].Driver.permanentNumber, 10)
+      if (!Number.isNaN(n)) driverB.value = n
+    }
   } catch {
     raceLoadError.value = 'Could not load race data. Try another race.'
-  } finally {
-    isLoadingRace.value = false
+    confirmState.value = 'idle'
+    raceConfirmed.value = false
   }
+}
+
+watch(selectedRound, () => {
+  if (confirmState.value === 'ready' || confirmState.value === 'confirmed') {
+    confirmState.value = 'idle'
+    raceConfirmed.value = false
+  }
+})
+
+function onLapSelectedFromChart(lapNumber: number) {
+  selectedLap.value = lapNumber
+  nextTick(() => {
+    const el = document.querySelector('.generate-telemetry-btn')
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
 }
 
 /**
@@ -317,7 +386,7 @@ function onLapChange() {
 
 <template>
   <div class="telemetry-view">
-    <div v-if="isLoadingRace" class="telemetry-progress" />
+    <div v-if="confirmState === 'loading'" class="telemetry-progress" />
 
     <div class="container py-10">
       <div class="page-header">
@@ -348,7 +417,7 @@ function onLapChange() {
           Choose a Race
         </label>
         <p class="selector-hint">Pick a completed Grand Prix, then confirm to load drivers</p>
-        <select v-model.number="selectedRound" class="selector-dropdown selector-dropdown--wide" :disabled="isLoadingRace">
+        <select v-model.number="selectedRound" class="selector-dropdown selector-dropdown--wide" :disabled="confirmState === 'loading'">
           <option :value="null" disabled>- Select a Grand Prix -</option>
           <optgroup :label="`${season} Season`">
             <option v-for="race in completedRaces" :key="race.round" :value="parseInt(race.round, 10)">
@@ -375,11 +444,20 @@ function onLapChange() {
 
         <button
           type="button"
-          class="btn-primary"
-          :disabled="selectedRound == null || isLoadingRace || isUpcomingRace"
+          class="btn-confirm"
+          :class="`btn-confirm--${confirmState}`"
+          :disabled="confirmState === 'loading' || selectedRound == null || isUpcomingRace"
           @click="onRaceConfirmed"
         >
-          {{ isLoadingRace ? 'Loading…' : 'Confirm race' }}
+          <template v-if="confirmState === 'idle'">Confirm race</template>
+          <template v-else-if="confirmState === 'loading'">
+            <StartLightsLoader :compact="true" />
+          </template>
+          <template v-else-if="confirmState === 'ready'">
+            <span class="btn-ready-dot" />
+            Ready — tap to continue
+          </template>
+          <template v-else>✓ Race loaded</template>
         </button>
       </div>
 
@@ -437,6 +515,24 @@ function onLapChange() {
         </div>
       </Transition>
 
+      <Transition name="fade-slide">
+        <RacePaceComparison
+          v-if="
+            driversConfirmed &&
+            lapsA.length > 0 &&
+            lapsB.length > 0 &&
+            racePaceDriverA &&
+            racePaceDriverB
+          "
+          :laps-a="lapsA"
+          :laps-b="lapsB"
+          :driver-a="racePaceDriverA"
+          :driver-b="racePaceDriverB"
+          :selected-lap="selectedLap"
+          @lap-selected="onLapSelectedFromChart"
+        />
+      </Transition>
+
       <!-- STEP 3 -->
       <Transition name="fade-slide">
         <div v-if="driversConfirmed" class="selector-section">
@@ -464,7 +560,7 @@ function onLapChange() {
 
           <button
             type="button"
-            class="btn-primary mt-4"
+            class="btn-primary mt-4 generate-telemetry-btn"
             :disabled="!selectedLap || isLoadingTelemetry"
             @click="onLapConfirmed"
           >
@@ -475,6 +571,7 @@ function onLapChange() {
 
       <Transition name="fade">
         <div v-if="currentStep === 4" class="telemetry-loading">
+          <StartLightsLoader label="Loading telemetry" />
           <div class="progress-bar-track">
             <div class="progress-bar-fill" :style="{ width: `${loadProgress}%` }" />
           </div>
@@ -721,6 +818,80 @@ function onLapChange() {
   transition: opacity 0.2s;
 }
 
+.btn-confirm {
+  margin-top: 12px;
+  padding: 14px 28px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s;
+  font-family: 'Titillium Web', sans-serif;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+  justify-content: center;
+}
+
+.btn-confirm--idle {
+  background: #e8002d;
+  color: #fff;
+}
+
+.btn-confirm--idle:hover:not(:disabled) {
+  background: #ff1a3d;
+  box-shadow: 0 0 20px rgba(232, 0, 45, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-confirm--loading {
+  background: rgba(232, 0, 45, 0.1);
+  border: 1px solid rgba(232, 0, 45, 0.2);
+  color: #e8002d;
+  cursor: wait;
+}
+
+.btn-confirm--ready {
+  background: rgba(0, 200, 83, 0.12);
+  border: 1px solid rgba(0, 200, 83, 0.3);
+  color: #00c853;
+  animation: ready-pulse 1.5s ease-in-out infinite;
+}
+
+.btn-confirm--ready:hover:not(:disabled) {
+  background: rgba(0, 200, 83, 0.2);
+  transform: translateY(-1px);
+}
+
+.btn-confirm--confirmed {
+  background: rgba(0, 200, 83, 0.08);
+  border: 1px solid rgba(0, 200, 83, 0.2);
+  color: #00c853;
+  cursor: default;
+  pointer-events: none;
+}
+
+.btn-ready-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00c853;
+  box-shadow: 0 0 8px #00c853;
+  flex-shrink: 0;
+}
+
+@keyframes ready-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 200, 83, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(0, 200, 83, 0.1);
+  }
+}
+
 .btn-primary:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -895,5 +1066,56 @@ function onLapChange() {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.btn-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .step-indicator {
+    gap: 0;
+    margin-bottom: 20px;
+  }
+
+  .step-dot {
+    padding: 10px 8px;
+    flex-direction: column;
+    gap: 4px;
+    text-align: center;
+  }
+
+  .step-label {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+
+  .selector-dropdown {
+    font-size: 14px;
+  }
+
+  .driver-selector-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .vs-label {
+    text-align: center;
+  }
+
+  .lap-selector-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .lap-input {
+    width: 80px;
+    font-size: 16px;
+  }
+
+  .telemetry-loading {
+    padding: 40px 16px;
+  }
 }
 </style>

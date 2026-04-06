@@ -30,7 +30,7 @@
       </div>
 
       <!-- Tabs -->
-      <div class="tabs-bar">
+      <div class="tabs-bar race-tabs">
         <button
           v-for="tab in tabs"
           :key="tab.id"
@@ -117,33 +117,159 @@
             <div class="glass-card mb-section quali-results-card">
               <div class="card-title-label">Qualifying</div>
               <p class="quali-kicker">Q1 / Q2 / Q3 from Ergast · grid from race results · gap vs pole (Q3)</p>
-              <div class="overflow-x-auto">
-                <table class="quali-table">
-                  <thead>
-                    <tr>
-                      <th>Pos</th>
-                      <th>Driver</th>
-                      <th>Grid</th>
-                      <th>Q1</th>
-                      <th>Q2</th>
-                      <th>Q3</th>
-                      <th>Gap to pole</th>
-                      <th>Tyre (fast lap)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="row in qualifyingTableRows" :key="row.code">
-                      <td class="font-data">{{ row.position }}</td>
-                      <td>{{ row.name }}</td>
-                      <td class="font-data">{{ row.grid }}</td>
-                      <td class="font-data">{{ row.q1 }}</td>
-                      <td class="font-data">{{ row.q2 }}</td>
-                      <td class="font-data">{{ row.q3 }}</td>
-                      <td class="font-data">{{ row.gap }}</td>
-                      <td>{{ row.tyre }}</td>
-                    </tr>
-                  </tbody>
-                </table>
+              <div class="phase-selector">
+                <button
+                  v-for="phase in (['Q1', 'Q2', 'Q3'] as const)"
+                  :key="phase"
+                  type="button"
+                  class="phase-btn"
+                  :class="{ 'phase-btn--active': selectedQualiPhase === phase }"
+                  @click="selectedQualiPhase = phase"
+                >
+                  {{ phase }}
+                  <span class="phase-count">{{ getPhaseDriverCount(phase) }}</span>
+                </button>
+              </div>
+              <div class="view-toggle">
+                <button
+                  type="button"
+                  class="view-btn"
+                  :class="{ 'view-btn--active': qualiView === 'mini' }"
+                  title="Mini sector colour map"
+                  @click="qualiView = 'mini'"
+                >
+                  ⬛ Mini Sectors
+                </button>
+                <button
+                  type="button"
+                  class="view-btn"
+                  :class="{ 'view-btn--active': qualiView === 'sector' }"
+                  title="Sector summary card"
+                  @click="qualiView = 'sector'"
+                >
+                  ▬ Sector View
+                </button>
+              </div>
+              <div class="view-note">
+                <span v-if="!phaseBoundaries.q1End">
+                  ⚠ Phase boundaries unavailable for this session — showing session-best lap for all phases
+                </span>
+              </div>
+              <p class="quali-phase-hint">
+                Mini sectors use OpenF1 for the selected phase when race-control boundaries exist; otherwise
+                session-best lap.
+              </p>
+              <div class="quali-blocks-wrap quali-driver-list-wrap">
+                <TransitionGroup name="driver-sort" tag="div" class="quali-driver-list">
+                  <div
+                    v-for="entry in displayedDrivers"
+                    :key="entry.driverNumber"
+                    class="quali-driver-block"
+                  >
+                    <div class="quali-row">
+                      <span
+                        class="quali-pos font-data"
+                        :class="{ 'quali-pos--pole': entry.displayPosition === 1 }"
+                      >
+                        {{ entry.displayPosition }}
+                      </span>
+                      <div
+                        class="quali-team-strip"
+                        :style="{
+                          background: getTeamColor(
+                            (entry.ergastData
+                              ? results.find(
+                                  r => r.Driver.code === entry.ergastData?.Driver.code
+                                )?.Constructor.name
+                              : undefined) ||
+                              entry.driver?.team_name ||
+                              ''
+                          ),
+                        }"
+                      />
+                      <span class="quali-name">{{
+                        entry.ergastData
+                          ? `${entry.ergastData.Driver.givenName} ${entry.ergastData.Driver.familyName}`
+                          : entry.driver?.full_name ?? `#${entry.driverNumber}`
+                      }}</span>
+                      <span class="quali-time quali-time--q1 font-data">{{
+                        entry.ergastData?.Q1 || '-'
+                      }}</span>
+                      <span class="quali-time quali-time--q2 font-data">{{
+                        entry.ergastData?.Q2 || '-'
+                      }}</span>
+                      <span class="quali-time quali-time--q3 font-data">{{
+                        entry.ergastData?.Q3 || '-'
+                      }}</span>
+                      <span
+                        class="quali-gap font-data"
+                        :class="{ 'quali-gap--pole': entry.displayPosition === 1 }"
+                      >
+                        {{
+                          entry.displayPosition === 1 ? 'POLE' : getQualiGapForDisplayedEntry(entry)
+                        }}
+                      </span>
+                      <span class="quali-tyre">{{ qualiTyreForDriver(entry.driverNumber) }}</span>
+                    </div>
+                    <div
+                      v-if="qualiView === 'mini' && qualiMiniByDriver[entry.driverNumber]"
+                      class="quali-mini-row"
+                    >
+                      <span class="mini-label">S1</span>
+                      <div class="mini-boxes">
+                        <div
+                          v-for="(seg, idx) in qualiMiniByDriver[entry.driverNumber].seg1"
+                          :key="`s1-${idx}`"
+                          class="mini-box"
+                          :style="{ background: MINI_SECTOR_COLORS[seg] ?? '#333' }"
+                        />
+                      </div>
+                      <span class="mini-time">{{
+                        formatMiniSectorTime(qualiMiniByDriver[entry.driverNumber].s1)
+                      }}</span>
+                      <span class="mini-label">S2</span>
+                      <div class="mini-boxes">
+                        <div
+                          v-for="(seg, idx) in qualiMiniByDriver[entry.driverNumber].seg2"
+                          :key="`s2-${idx}`"
+                          class="mini-box"
+                          :style="{ background: MINI_SECTOR_COLORS[seg] ?? '#333' }"
+                        />
+                      </div>
+                      <span class="mini-time">{{
+                        formatMiniSectorTime(qualiMiniByDriver[entry.driverNumber].s2)
+                      }}</span>
+                      <span class="mini-label">S3</span>
+                      <div class="mini-boxes">
+                        <div
+                          v-for="(seg, idx) in qualiMiniByDriver[entry.driverNumber].seg3"
+                          :key="`s3-${idx}`"
+                          class="mini-box"
+                          :style="{ background: MINI_SECTOR_COLORS[seg] ?? '#333' }"
+                        />
+                      </div>
+                      <span class="mini-time">{{
+                        formatMiniSectorTime(qualiMiniByDriver[entry.driverNumber].s3)
+                      }}</span>
+                    </div>
+                    <div v-if="qualiView === 'sector'" class="sector-summary-row">
+                      <div
+                        v-for="sector in (['S1', 'S2', 'S3'] as const)"
+                        :key="sector"
+                        class="sector-block"
+                        :style="{ background: getSectorColor(entry, sector) }"
+                      >
+                        <span class="sector-block-label">{{ sector }}</span>
+                        <span class="sector-block-time">
+                          {{ formatSector(getSectorTime(entry, sector)) }}
+                        </span>
+                        <span v-if="getSectorDelta(entry, sector)" class="sector-block-delta">
+                          {{ getSectorDelta(entry, sector) }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </TransitionGroup>
               </div>
             </div>
             <div class="glass-card tab-card">
@@ -340,7 +466,7 @@
 
         <!-- INSIGHTS -->
         <div v-if="activeTab === 'insights'" class="insights-tab">
-          <section v-if="pipelineRaceStats" class="insights-block">
+          <section class="insights-block">
             <RaceStory :raceStats="pipelineRaceStats" />
           </section>
 
@@ -396,6 +522,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, toRef } from 'vue'
+import { useRoute } from 'vue-router'
 import { useRaceData } from '@/composables/useRaceData'
 import { useSeasonStore } from '@/stores/seasonStore'
 import { getTeamColor, getCircuitFlag, TYRE_COLORS } from '@/constants/teams'
@@ -419,13 +546,24 @@ import ConsistencyChart from '@/components/charts/ConsistencyChart.vue'
 import { generateChartOneLiners, type ChartOneLiners } from '@/api/chartOneLiners'
 import { getQualifyingResults } from '@/api/ergast'
 import { getRaceAvailability } from '@/utils/raceAvailability'
-import { getQualifyingSession, getLaps, getStints, type Session, type Lap, type Stint } from '@/api/openf1'
+import {
+  getQualifyingSession,
+  getLaps,
+  getStints,
+  getRaceControl,
+  type Session,
+  type Lap,
+  type Stint,
+} from '@/api/openf1'
+import type { RaceControlMessage } from '@/types/openf1'
+import { findPhaseBoundaries, getLapsForPhase, bestLapForDriver } from '@/lib/qualifyingPhaseLaps'
 
 const props = defineProps<{
   season: number
   round: number
 }>()
 
+const route = useRoute()
 const seasonStore = useSeasonStore()
 const raceData = useRaceData(toRef(props, 'season'), toRef(props, 'round'))
 
@@ -514,24 +652,89 @@ const qualifyingTabLaps = ref<Record<number, Lap[]>>({})
 const qualifyingTabStints = ref<Stint[]>([])
 const qualifyingTabReady = ref(false)
 const qualifyingSelectedDrivers = ref<number[]>([])
+const selectedQualiPhase = ref<'Q1' | 'Q2' | 'Q3'>('Q3')
+const qualifyingTabRaceControl = ref<RaceControlMessage[]>([])
+const phaseBoundaries = ref<{ q1End: string | null; q2End: string | null }>({
+  q1End: null,
+  q2End: null,
+})
+const qualiView = ref<'mini' | 'sector'>('mini')
 
-function parseQualiTime(t: string | undefined): number | null {
-  if (!t || t === '') return null
-  const clean = t.replace(/^\+\s*/, '').trim()
-  if (clean === '' || /dnf/i.test(clean)) return null
-  const parts = clean.split(':')
-  if (parts.length === 2) {
-    const mins = parseInt(parts[0], 10)
-    const secs = parseFloat(parts[1])
-    if (Number.isFinite(mins) && Number.isFinite(secs)) return mins * 60 + secs
-  }
-  const n = parseFloat(clean)
-  return Number.isFinite(n) ? n : null
+const MINI_SECTOR_COLORS: Record<number, string> = {
+  2048: '#00c853',
+  2049: '#9c27b0',
+  2051: '#ffd600',
+  2052: '#333333',
+  2064: '#e8002d',
 }
 
-function bestQualiSeconds(row: { Q1?: string; Q2?: string; Q3?: string }): number | null {
-  const t = row.Q3 || row.Q2 || row.Q1
-  return parseQualiTime(t)
+const phaseQualiLaps = computed(() =>
+  getLapsForPhase(qualifyingTabLaps.value, phaseBoundaries.value, selectedQualiPhase.value)
+)
+
+const phaseBestLaps = computed(() => {
+  const result: Record<number, Lap> = {}
+  for (const [driverNumStr, laps] of Object.entries(phaseQualiLaps.value)) {
+    const driverNum = Number(driverNumStr)
+    const validLaps = (laps || []).filter(
+      l => l.lap_duration !== null && l.duration_sector_1 !== null
+    )
+    if (!validLaps.length) continue
+    result[driverNum] = validLaps.reduce((best, lap) =>
+      (lap.lap_duration ?? Infinity) < (best.lap_duration ?? Infinity) ? lap : best
+    )
+  }
+  return result
+})
+
+const phaseDriverRanking = computed(() =>
+  Object.entries(phaseBestLaps.value)
+    .map(([driverNum, lap]) => ({
+      driverNumber: Number(driverNum),
+      lap,
+      driver: drivers.value.find(d => d.driver_number === Number(driverNum)),
+    }))
+    .filter(entry => entry.driver && entry.lap.lap_duration !== null)
+    .sort((a, b) => (a.lap.lap_duration ?? 99) - (b.lap.lap_duration ?? 99))
+)
+
+const displayedDrivers = computed(() =>
+  phaseDriverRanking.value.map((entry, index) => ({
+    ...entry,
+    displayPosition: index + 1,
+    ergastData: getErgastDriverData(entry.driverNumber),
+  }))
+)
+
+function getErgastDriverData(driverNumber: number) {
+  const openf1Driver = drivers.value.find(d => d.driver_number === driverNumber)
+  if (!openf1Driver) return null
+  return (
+    qualifyingErgast.value.find(r => r.Driver.code === openf1Driver.name_acronym) ?? null
+  )
+}
+
+function getPhaseDriverCount(phase: 'Q1' | 'Q2' | 'Q3'): number {
+  const laps = getLapsForPhase(qualifyingTabLaps.value, phaseBoundaries.value, phase)
+  let n = 0
+  for (const list of Object.values(laps)) {
+    const valid = (list || []).filter(
+      l => l.lap_duration !== null && l.duration_sector_1 !== null
+    )
+    if (valid.length) n++
+  }
+  return n
+}
+
+function getQualiGapForDisplayedEntry(entry: {
+  displayPosition: number
+  driverNumber: number
+  lap: Lap
+}): string {
+  const pole = phaseDriverRanking.value[0]
+  if (!pole?.lap?.lap_duration || entry.lap.lap_duration == null) return '-'
+  if (entry.driverNumber === pole.driverNumber) return '-'
+  return formatGapSeconds(entry.lap.lap_duration - pole.lap.lap_duration)
 }
 
 function formatGapSeconds(delta: number): string {
@@ -541,7 +744,7 @@ function formatGapSeconds(delta: number): string {
 }
 
 function qualiTyreForDriver(driverNumber: number): string {
-  const laps = qualifyingTabLaps.value[driverNumber]
+  const laps = phaseQualiLaps.value[driverNumber]
   if (!laps?.length) return '-'
   let bestLap: Lap | null = null
   for (const l of laps) {
@@ -555,35 +758,6 @@ function qualiTyreForDriver(driverNumber: number): string {
   )
   return stint?.compound ?? '-'
 }
-
-const qualifyingTableRows = computed(() => {
-  const rows = qualifyingErgast.value
-  if (!rows.length) return []
-  const pole = rows[0]
-  const poleT = bestQualiSeconds(pole)
-  return rows.map((row, i) => {
-    const code = row.Driver.code
-    const num = parseInt(row.Driver.permanentNumber, 10)
-    const grid = results.value.find(r => r.Driver.code === code)?.grid ?? '-'
-    let gap = '-'
-    if (i === 0) gap = 'POLE'
-    else if (poleT != null) {
-      const t = bestQualiSeconds(row)
-      if (t != null) gap = formatGapSeconds(t - poleT)
-    }
-    return {
-      position: row.position,
-      code,
-      name: `${row.Driver.givenName} ${row.Driver.familyName}`,
-      grid,
-      q1: row.Q1 || '-',
-      q2: row.Q2 || '-',
-      q3: row.Q3 || '-',
-      gap,
-      tyre: qualiTyreForDriver(num),
-    }
-  })
-})
 
 const qualifyingChartDriverOptions = computed(() =>
   results.value.slice(0, 12).map(r => ({
@@ -599,10 +773,114 @@ const qualifyingChartDrivers = computed(() =>
     return {
       code: result?.Driver.code || `#${num}`,
       color: result ? getTeamColor(result.Constructor.name) : '#888',
-      laps: qualifyingTabLaps.value[num] || [],
+      laps: phaseQualiLaps.value[num] || [],
     }
   })
 )
+
+function formatMiniSectorTime(s: number | null | undefined): string {
+  if (s == null || s === undefined) return '—'
+  return s.toFixed(3)
+}
+
+type MiniRow = {
+  seg1: number[]
+  seg2: number[]
+  seg3: number[]
+  s1: number | null
+  s2: number | null
+  s3: number | null
+}
+
+function miniSectorRow(driverNumber: number): MiniRow | null {
+  const lap = bestLapForDriver(phaseQualiLaps.value[driverNumber])
+  if (!lap) return null
+  return {
+    seg1: lap.segments_sector_1 ?? [],
+    seg2: lap.segments_sector_2 ?? [],
+    seg3: lap.segments_sector_3 ?? [],
+    s1: lap.duration_sector_1,
+    s2: lap.duration_sector_2,
+    s3: lap.duration_sector_3,
+  }
+}
+
+const qualiMiniByDriver = computed(() => {
+  const out: Record<number, MiniRow> = {}
+  for (const entry of phaseDriverRanking.value) {
+    const m = miniSectorRow(entry.driverNumber)
+    if (m) out[entry.driverNumber] = m
+  }
+  return out
+})
+
+type QualiDriverEntry = { driverNumber: number }
+
+/**
+ * Sector summary colours: purple = fastest in sector for the phase; green = personal best;
+ * yellow = slower than PB; grey = no time.
+ */
+function getSectorColor(driverEntry: QualiDriverEntry, sector: 'S1' | 'S2' | 'S3'): string {
+  const sectorKey =
+    sector === 'S1' ? 'duration_sector_1' : sector === 'S2' ? 'duration_sector_2' : 'duration_sector_3'
+
+  const driverTime = phaseBestLaps.value[driverEntry.driverNumber]?.[sectorKey as keyof Lap] as
+    | number
+    | null
+    | undefined
+  if (driverTime == null) return '#222'
+
+  const allTimes = phaseDriverRanking.value
+    .map(e => phaseBestLaps.value[e.driverNumber]?.[sectorKey as keyof Lap] as number | null | undefined)
+    .filter((t): t is number => t != null)
+  if (!allTimes.length) return '#222'
+  const overallBest = Math.min(...allTimes)
+
+  if (Math.abs(driverTime - overallBest) < 0.001) return '#9C27B0'
+
+  const driverPhaseLaps = phaseQualiLaps.value[driverEntry.driverNumber] ?? []
+  const sectorTimes = driverPhaseLaps
+    .map(l => l[sectorKey as keyof Lap] as number | null | undefined)
+    .filter((t): t is number => t != null)
+  if (!sectorTimes.length) return '#222'
+  const personalBest = Math.min(...sectorTimes)
+
+  if (Math.abs(driverTime - personalBest) < 0.001) return '#00C853'
+
+  return '#FFD600'
+}
+
+function getSectorTime(driverEntry: QualiDriverEntry, sector: 'S1' | 'S2' | 'S3'): number | null {
+  const key =
+    sector === 'S1' ? 'duration_sector_1' : sector === 'S2' ? 'duration_sector_2' : 'duration_sector_3'
+  const v = phaseBestLaps.value[driverEntry.driverNumber]?.[key as keyof Lap]
+  return typeof v === 'number' ? v : null
+}
+
+function formatSector(seconds: number | null): string {
+  if (seconds == null) return '—'
+  return seconds.toFixed(3)
+}
+
+function getSectorDelta(driverEntry: QualiDriverEntry, sector: 'S1' | 'S2' | 'S3'): string | null {
+  const sectorKey =
+    sector === 'S1' ? 'duration_sector_1' : sector === 'S2' ? 'duration_sector_2' : 'duration_sector_3'
+
+  const driverTime = phaseBestLaps.value[driverEntry.driverNumber]?.[sectorKey as keyof Lap] as
+    | number
+    | undefined
+  if (driverTime == null) return null
+
+  const allTimes = phaseDriverRanking.value
+    .map(e => phaseBestLaps.value[e.driverNumber]?.[sectorKey as keyof Lap] as number | undefined)
+    .filter((t): t is number => t != null)
+  if (!allTimes.length) return null
+  const best = Math.min(...allTimes)
+  const delta = driverTime - best
+
+  if (delta < 0.001) return null
+  return `+${delta.toFixed(3)}`
+}
 
 async function loadQualifyingTabData() {
   qualifyingTabLoading.value = true
@@ -627,19 +905,40 @@ async function loadQualifyingTabData() {
       return
     }
 
-    const st = await getStints(session.session_key)
+    const [st, rc] = await Promise.all([
+      getStints(session.session_key),
+      getRaceControl(session.session_key),
+    ])
     qualifyingTabStints.value = Array.isArray(st) ? st : []
+
+    const rcRows = Array.isArray(rc) ? (rc as RaceControlMessage[]) : []
+    qualifyingTabRaceControl.value = rcRows
+    console.log(
+      '[QualiDebug] race control messages:',
+      rcRows.map(m => ({
+        date: m.date,
+        message: m.message,
+        category: m.category,
+        flag: m.flag,
+      }))
+    )
 
     const topNums = qRows
       .slice(0, 10)
       .map(r => parseInt(r.Driver.permanentNumber, 10))
       .filter(n => Number.isFinite(n))
+    const lapEntries = await Promise.all(
+      topNums.map(async n => {
+        const laps = (await getLaps(session.session_key, n)) as Lap[]
+        return [n, Array.isArray(laps) ? laps : []] as const
+      })
+    )
     const map: Record<number, Lap[]> = {}
-    for (const n of topNums) {
-      const laps = (await getLaps(session.session_key, n)) as Lap[]
-      map[n] = Array.isArray(laps) ? laps : []
-    }
+    for (const [n, laps] of lapEntries) map[n] = laps
     qualifyingTabLaps.value = map
+
+    phaseBoundaries.value = findPhaseBoundaries(rcRows, map)
+    console.log('[Qualifying] Phase boundaries:', phaseBoundaries.value)
     qualifyingSelectedDrivers.value = topNums.slice(0, 5)
     qualifyingTabReady.value = true
   } catch (e) {
@@ -673,6 +972,10 @@ function resetQualifyingForNewRace() {
   qualifyingTabStints.value = []
   qualifyingTabReady.value = false
   qualifyingSelectedDrivers.value = []
+  selectedQualiPhase.value = 'Q3'
+  qualifyingTabRaceControl.value = []
+  phaseBoundaries.value = { q1End: null, q2End: null }
+  qualiView.value = 'mini'
 }
 
 /**
@@ -899,9 +1202,13 @@ watch(
 )
 
 onMounted(async () => {
-  seasonStore.syncSelectedSeasonOnly(props.season)
+  const urlSeason = Number(route.params.season)
+  if (Number.isFinite(urlSeason) && urlSeason !== seasonStore.selectedSeason) {
+    /** URL is source of truth for race pages — sync navbar without clearing (see `syncSelectedSeasonOnly`). */
+    seasonStore.syncSelectedSeasonOnly(urlSeason)
+  }
   if (seasonStore.schedule.length === 0) {
-    seasonStore.loadCurrentSeason()
+    await seasonStore.loadCurrentSeason()
   }
   await raceData.load()
 
@@ -1051,6 +1358,266 @@ onMounted(async () => {
 
 .quali-toggles {
   padding: 0 1.25rem 1rem;
+}
+
+.phase-selector {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.phase-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #666;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Titillium Web', sans-serif;
+}
+
+.phase-btn--active {
+  background: rgba(232, 0, 45, 0.12);
+  border-color: rgba(232, 0, 45, 0.3);
+  color: #e8002d;
+}
+
+.phase-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #444;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-family: 'DM Mono', monospace;
+  transition: color 0.2s;
+}
+
+.phase-btn--active .phase-count {
+  color: rgba(232, 0, 45, 0.6);
+  background: rgba(232, 0, 45, 0.08);
+}
+
+.quali-phase-hint {
+  font-size: 11px;
+  color: #555;
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.view-btn {
+  padding: 7px 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #666;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Titillium Web', sans-serif;
+}
+
+.view-btn--active {
+  background: rgba(232, 0, 45, 0.12);
+  border-color: rgba(232, 0, 45, 0.3);
+  color: #e8002d;
+}
+
+.view-note {
+  font-size: 11px;
+  color: #555;
+  margin-bottom: 16px;
+  font-style: italic;
+}
+
+.sector-summary-row {
+  display: flex;
+  gap: 6px;
+  padding: 6px 16px 12px 56px;
+  align-items: center;
+}
+
+.sector-block {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  width: 160px;
+  height: 36px;
+  transition: transform 0.15s, opacity 0.15s;
+  opacity: 0.92;
+  flex-shrink: 0;
+}
+
+.sector-block:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.sector-block-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+}
+
+.sector-block-time {
+  font-size: 13px;
+  font-weight: 800;
+  font-family: 'DM Mono', monospace;
+  color: #fff;
+  flex: 1;
+  text-align: center;
+}
+
+.sector-block-delta {
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+  color: rgba(255, 255, 255, 0.55);
+  flex-shrink: 0;
+  text-align: right;
+  min-width: 44px;
+}
+
+.quali-driver-list-wrap {
+  position: relative;
+  overflow-x: auto;
+}
+
+.quali-driver-list {
+  position: relative;
+}
+
+.driver-sort-move {
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.driver-sort-enter-active {
+  transition: all 0.3s ease;
+}
+
+.driver-sort-leave-active {
+  transition: all 0.2s ease;
+  position: absolute;
+  width: 100%;
+}
+
+.driver-sort-enter-from {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.driver-sort-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.quali-blocks-wrap {
+  overflow-x: auto;
+}
+
+.quali-driver-block {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  transition: background 0.15s;
+  margin-bottom: 2px;
+}
+
+.quali-driver-block:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.quali-row {
+  display: grid;
+  grid-template-columns: 40px 4px 1fr 100px 100px 100px 90px 80px;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 8px;
+}
+
+.quali-pos {
+  font-weight: 700;
+}
+
+.quali-team-strip {
+  width: 4px;
+  height: 32px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.quali-pos--pole {
+  color: #9c27b0;
+  font-weight: 900;
+}
+
+.quali-gap--pole {
+  color: #9c27b0;
+  font-weight: 800;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.quali-name {
+  font-size: 0.9rem;
+  color: #eee;
+}
+
+.quali-mini-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px 12px 56px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.mini-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+  width: 20px;
+}
+
+.mini-boxes {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.mini-box {
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+}
+
+.mini-time {
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+  color: #666;
+  flex-shrink: 0;
+  margin-right: 16px;
 }
 
 .quali-table {
@@ -1396,6 +1963,87 @@ onMounted(async () => {
 @media (max-width: 900px) {
   .overview-grid,
   .pace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .race-header {
+    padding: 16px 0;
+  }
+
+  .race-title {
+    font-size: 28px;
+  }
+
+  .tabs-bar,
+  .race-tabs {
+    display: flex;
+    overflow-x: auto;
+    gap: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    margin: 0 calc(-1 * var(--page-padding, 16px));
+    padding: 0 var(--page-padding, 16px);
+  }
+
+  .tabs-bar::-webkit-scrollbar,
+  .race-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-btn {
+    flex-shrink: 0;
+    padding: 12px 16px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .quali-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+
+  .quali-time--q1,
+  .quali-time--q2 {
+    display: none;
+  }
+
+  .quali-mini-row {
+    overflow-x: auto;
+    padding-bottom: 8px;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .quali-mini-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sector-summary-row {
+    gap: 4px;
+    padding-left: 40px;
+  }
+
+  .sector-block {
+    width: 100px;
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  .sector-block-time {
+    font-size: 11px;
+  }
+
+  .sector-block-delta {
+    display: none;
+  }
+
+  .insights-grid-detailed {
     grid-template-columns: 1fr;
   }
 }

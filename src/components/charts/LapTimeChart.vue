@@ -162,7 +162,13 @@ const chartOptions = computed(() => ({
   interaction: { mode: 'index' as const, intersect: false },
   plugins: {
     legend: {
-      labels: { color: '#aaa', font: { family: 'DM Mono', size: 11 }, padding: 16 }
+      position: 'top' as const,
+      labels: {
+        color: '#aaa',
+        boxWidth: 12,
+        padding: 8,
+        font: { family: 'DM Mono', size: 11 },
+      },
     },
     tooltip: {
       backgroundColor: '#111',
@@ -185,7 +191,7 @@ const chartOptions = computed(() => ({
   scales: {
     x: {
       grid: { color: 'rgba(255,255,255,0.04)' },
-      ticks: { color: '#666', font: { size: 10 } },
+      ticks: { color: '#666', font: { size: 10 }, maxTicksLimit: 8 },
       title: { display: true, text: 'Lap', color: '#555', font: { size: 11 } }
     },
     y: {

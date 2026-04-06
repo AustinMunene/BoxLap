@@ -24,6 +24,7 @@ import { z } from 'zod'
 const RaceStatsSchema = z.object({
   raceName: z.string().min(1),
   season: z.number().int().positive(),
+  round: z.number().int().min(1).max(30),
   winner: z.string().min(1),
   winnerTeam: z.string().min(1),
   totalLaps: z.number().int().positive(),
@@ -51,6 +52,8 @@ const RaceStatsSchema = z.object({
 export interface RaceStats {
   raceName: string
   season: number
+  /** Championship round (1-based); used for stable sessionStorage cache keys. */
+  round: number
   winner: string
   winnerTeam: string
   totalLaps: number
@@ -71,6 +74,18 @@ export interface RaceStats {
 }
 
 /**
+ * Validates RaceStats before calling Gemini. Incomplete payloads fail the API
+ * and surface as a generic "story unavailable" in the UI.
+ */
+export function isRaceStatsComplete(stats: RaceStats): boolean {
+  if (!stats.raceName || !stats.winner) return false
+  if (!stats.totalLaps || stats.totalLaps === 0) return false
+  if (!stats.pacingRanking || stats.pacingRanking.length < 3) return false
+  if (!stats.strategies || stats.strategies.length < 3) return false
+  return true
+}
+
+/**
  * Main export - call this after race data is fully loaded.
  * Returns an array of { headline, body } objects ready to render.
  * Results are cached in sessionStorage so we don't re-call on navigation.
@@ -83,12 +98,25 @@ export interface RaceStats {
  * 5. Caches the result for fast subsequent renders
  *
  * @param raceStats Pre-computed race statistics object
- * @returns Promise resolving to array of {headline, body} paragraph objects
+ * @returns Stories array, or `null` if stats are incomplete (caller should wait / retry)
  * @throws Error if validation fails, rate limit exceeded, or API error occurs
  */
-export async function generateRaceStory(raceStats: RaceStats): Promise<{ headline: string; body: string }[]> {
-  // Check sessionStorage cache first - keyed by race name + season
-  const cacheKey = `boxlap_story_${raceStats.season}_${raceStats.raceName}`
+export async function generateRaceStory(
+  raceStats: RaceStats
+): Promise<{ headline: string; body: string }[] | null> {
+  if (!isRaceStatsComplete(raceStats)) {
+    console.warn('[generateRaceStory] raceStats incomplete, skipping:', {
+      raceName: raceStats.raceName,
+      winner: raceStats.winner,
+      paceEntries: raceStats.pacingRanking?.length,
+      totalLaps: raceStats.totalLaps,
+      strategyEntries: raceStats.strategies?.length,
+    })
+    return null
+  }
+
+  // Deterministic cache key: season + round only (not raceName — formatting varies by source).
+  const cacheKey = `boxlap_story_${raceStats.season}_${raceStats.round}`
   const cachedStr = sessionStorage.getItem(cacheKey)
   if (cachedStr) {
     return JSON.parse(cachedStr)

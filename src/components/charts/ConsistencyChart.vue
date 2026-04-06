@@ -158,7 +158,10 @@ const chartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
-    legend: { display: false },
+    legend: {
+      display: false,
+      labels: { boxWidth: 12, padding: 8, font: { size: 11 } },
+    },
     tooltip: {
       backgroundColor: '#111',
       borderColor: '#333',
@@ -177,12 +180,16 @@ const chartOptions = computed(() => ({
   scales: {
     x: {
       grid: { display: false },
-      ticks: { color: '#aaa', font: { family: 'DM Mono', size: 11 } },
+      ticks: {
+        color: '#aaa',
+        font: { family: 'DM Mono', size: 10 },
+        maxTicksLimit: 8,
+      },
       title: { display: true, text: 'Driver', color: '#555', font: { size: 11 } },
     },
     y: {
       grid: { color: 'rgba(255,255,255,0.04)' },
-      ticks: { color: '#666', font: { family: 'DM Mono', size: 10 } },
+      ticks: { color: '#666', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 8 },
       title: { display: true, text: 'Lap time (s)', color: '#555', font: { size: 11 } },
     },
   },

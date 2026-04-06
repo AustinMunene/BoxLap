@@ -59,7 +59,10 @@ const chartOptions = computed(() => {
     maintainAspectRatio: false,
     indexAxis: 'y' as const,
     plugins: {
-      legend: { display: false },
+      legend: {
+        display: false,
+        labels: { boxWidth: 12, padding: 8, font: { size: 11 } },
+      },
       tooltip: {
         backgroundColor: '#111',
         borderColor: '#333',
@@ -82,6 +85,7 @@ const chartOptions = computed(() => {
         ticks: {
           color: '#666',
           font: { family: 'DM Mono', size: 10 },
+          maxTicksLimit: 8,
           callback: (val: unknown) => {
             const v = val as number
             return `${(v % 60).toFixed(1)}s`

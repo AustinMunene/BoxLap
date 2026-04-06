@@ -131,6 +131,7 @@ const sectorMinMax = computed(() => {
 </script>
 
 <template>
+  <div class="chart-scroll-wrap">
   <div class="heatmap">
     <div class="head">
       <div class="cell head-cell driver">Driver</div>
@@ -160,6 +161,7 @@ const sectorMinMax = computed(() => {
         {{ row.sectors.duration_sector_3 ? row.sectors.duration_sector_3.toFixed(2) : '-' }}
       </div>
     </div>
+  </div>
   </div>
 </template>
 

@@ -1,0 +1,241 @@
+/* ─── MOBILE BASE ─────────────────────────────────────────────── */
+
+html,
+body {
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+button,
+select,
+input,
+[role='button'] {
+  min-height: 44px;
+  touch-action: manipulation;
+}
+
+a.nav-link,
+a.navbar-link,
+a.nav-logo {
+  min-height: 44px;
+  touch-action: manipulation;
+  display: inline-flex;
+  align-items: center;
+}
+
+button,
+.season-pill,
+.phase-btn,
+.view-btn,
+.tab-btn {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.navbar {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+
+.page-content {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+:root {
+  --page-padding: 16px;
+  --card-radius: 12px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --page-padding: 24px;
+    --card-radius: 16px;
+  }
+}
+
+@media (min-width: 1200px) {
+  :root {
+    --page-padding: 48px;
+  }
+}
+
+/* Prevent iOS zoom on input focus */
+input[type='number'],
+input[type='text'],
+select {
+  font-size: 16px !important;
+}
+
+@media (min-width: 769px) {
+  input[type='number'],
+  input[type='text'],
+  select {
+    font-size: inherit !important;
+  }
+}
+
+.chart-scroll-wrap {
+  overflow-x: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  margin: 0 calc(-1 * var(--page-padding));
+  padding: 0 var(--page-padding);
+}
+
+.chart-scroll-wrap::-webkit-scrollbar {
+  display: none;
+}
+
+.chart-scroll-wrap > * {
+  min-width: 600px;
+}
+
+/* Mobile navbar */
+@media (max-width: 768px) {
+  .navbar {
+    padding: 12px var(--page-padding);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(8, 8, 8, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .navbar-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .navbar-logo {
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .navbar-links:not(.navbar-links--open) {
+    display: none;
+  }
+
+  .navbar-links--open {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 8, 8, 0.98);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    z-index: 200;
+    padding: 80px var(--page-padding) 40px;
+    gap: 8px;
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+
+  .navbar-link {
+    font-size: 28px;
+    font-weight: 800;
+    padding: 12px 0;
+    color: #888;
+    width: 100%;
+    font-family: 'Titillium Web', sans-serif;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    min-height: auto;
+  }
+
+  .navbar-link.router-link-active,
+  .navbar-link.navbar-link--active {
+    color: #e8002d;
+  }
+
+  .hamburger {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px;
+    cursor: pointer;
+    z-index: 201;
+    flex-shrink: 0;
+    min-height: 44px;
+    min-width: 44px;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+  }
+
+  .hamburger-line {
+    width: 22px;
+    height: 2px;
+    background: #fff;
+    border-radius: 2px;
+    transition: all 0.25s;
+    transform-origin: center;
+  }
+
+  .hamburger--open .hamburger-line:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+  }
+
+  .hamburger--open .hamburger-line:nth-child(2) {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+
+  .hamburger--open .hamburger-line:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+  }
+
+  .season-selector--in-menu {
+    margin-top: 24px;
+    width: 100%;
+  }
+
+  .season-selector--in-menu .season-pill {
+    padding: 8px 20px;
+    font-size: 16px;
+  }
+
+  .season-selector--desktop {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .hamburger {
+    display: none !important;
+  }
+
+  .navbar-links {
+    display: flex !important;
+    position: static !important;
+    inset: auto !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    background: transparent !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    flex: 1;
+    gap: 0.25rem;
+  }
+
+  .season-selector--in-menu {
+    display: none !important;
+  }
+
+  .navbar-link {
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 0.375rem 0.875rem;
+    border-bottom: none;
+    width: auto;
+  }
+}

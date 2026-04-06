@@ -147,7 +147,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Bar } from 'vue-chartjs'
 import {
@@ -316,11 +316,13 @@ const pointsChartOptions = {
   }
 }
 
-onMounted(() => {
-  if (!seasonStore.driverStandings.length) {
-    seasonStore.loadCurrentSeason()
-  }
-})
+watch(
+  () => seasonStore.selectedSeason,
+  async () => {
+    await seasonStore.loadCurrentSeason()
+  },
+  { immediate: true }
+)
 
 watch(
   () => seasonStore.driverStandings,
@@ -700,9 +702,40 @@ watch(
   }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 768px) {
   .drivers-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .driver-card {
+    min-height: 200px;
+  }
+
+  .driver-card-photo-wrap {
+    height: 120px;
+  }
+
+  .driver-card-name {
+    font-size: 15px;
+  }
+
+  .driver-card-pts-value {
+    font-size: 22px;
+  }
+
+  @media (hover: none) {
+    .driver-card-hover-stats {
+      transform: translateY(0);
+      background: rgba(0, 0, 0, 0.7);
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .drivers-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
   }
 }
 </style>

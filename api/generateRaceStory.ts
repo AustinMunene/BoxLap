@@ -35,6 +35,7 @@ import { checkRateLimit, getClientIp } from './_rateLimit.ts'
 const RaceStatsSchema = z.object({
   raceName: z.string().min(1),
   season: z.number().int().positive(),
+  round: z.number().int().min(1).max(30),
   winner: z.string().min(1),
   winnerTeam: z.string().min(1),
   totalLaps: z.number().int().positive(),
@@ -85,6 +86,12 @@ const RaceStatsSchema = z.object({
 
 type RaceStats = z.infer<typeof RaceStatsSchema>
 
+/**
+ * Server-side JSON cache for successful Gemini race-story responses.
+ * Key: `${season}_${round}`. Checked before rate limiting so repeat requests
+ * do not consume quota.
+ */
+const raceStoryResponseCache = new Map<string, string>()
 
 /**
  * Builds the race analysis prompt for Gemini.
@@ -150,12 +157,33 @@ export default async (req: VercelRequest, res: VercelResponse) => {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  if (!process.env.GEMINI_API_KEY) {
+    console.error('[generateRaceStory] GEMINI_API_KEY not set in environment')
+    return res.status(500).json({
+      error: 'Server misconfiguration',
+      code: 'MISSING_GEMINI_KEY',
+    })
+  }
+
   try {
+    const parsedBody = RaceStatsSchema.safeParse(req.body)
+    if (!parsedBody.success) {
+      return res.status(400).json({
+        error: 'Invalid RaceStats payload',
+        details: parsedBody.error.errors,
+      })
+    }
+    const raceStats = parsedBody.data
+
+    const cacheKey = `${raceStats.season}_${raceStats.round}`
+    const cachedJson = raceStoryResponseCache.get(cacheKey)
+    if (cachedJson) {
+      const parsed = JSON.parse(cachedJson) as { stories: unknown[] }
+      return res.status(200).json({ stories: parsed.stories, cached: true })
+    }
+
     /**
-     * Rate limiting via shared _rateLimit.ts utility.
-     * We use the shared module rather than a private implementation
-     * so all endpoints have consistent behaviour and can be audited
-     * in one place. See CURSOR.md Rule 2.
+     * Rate limiting only when we need a real Gemini call.
      */
     const ip = getClientIp(req)
     const rl = checkRateLimit({ key: `race_story:${ip}`, limit: 20, windowMs: 3600_000 })
@@ -164,20 +192,6 @@ export default async (req: VercelRequest, res: VercelResponse) => {
         error: 'Rate limit exceeded',
         retryAfter: rl.retryAfterSeconds,
       })
-    }
-
-    // Parse and validate request body
-    let raceStats: RaceStats
-    try {
-      raceStats = RaceStatsSchema.parse(req.body)
-    } catch (e) {
-      if (e instanceof z.ZodError) {
-        return res.status(400).json({
-          error: 'Invalid RaceStats payload',
-          details: (e as z.ZodError).errors,
-        })
-      }
-      throw e
     }
 
     const prompt = buildRacePrompt(raceStats)
@@ -201,10 +215,12 @@ export default async (req: VercelRequest, res: VercelResponse) => {
         }
       })
 
-    return res.status(200).json({
+    const payload = {
       stories: paragraphs,
-      cached: false,
-    })
+      cached: false as const,
+    }
+    raceStoryResponseCache.set(cacheKey, JSON.stringify(payload))
+    return res.status(200).json(payload)
   } catch (error) {
     const geminiStatus = getGeminiHttpStatus(error)
     if (geminiStatus === 429) {

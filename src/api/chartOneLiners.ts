@@ -36,7 +36,11 @@ export type ChartOneLiners = z.infer<typeof OneLinersSchema>
  * Returns: `ChartOneLiners`.
  */
 export async function generateChartOneLiners(raceStats: RaceStats, season: number, round: number): Promise<ChartOneLiners> {
-  const cacheKey = `boxlap_chart_oneliners_${season}_${round}`
+  /**
+   * Must match raceStats.season/round — same race identity as story cache.
+   * Key is deterministic (no raceName, timestamps, or random ids).
+   */
+  const cacheKey = `boxlap_oneliners_${season}_${round}`
   const cached = sessionStorage.getItem(cacheKey)
   if (cached) {
     const parsed = OneLinersSchema.safeParse(JSON.parse(cached))

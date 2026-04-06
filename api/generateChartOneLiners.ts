@@ -33,6 +33,7 @@ import { generateText, getGeminiHttpStatus, getGeminiRetryAfterSeconds } from '.
 const RaceStatsSchema = z.object({
   raceName: z.string().min(1),
   season: z.number().int().positive(),
+  round: z.number().int().min(1).max(30),
   winner: z.string().min(1),
   winnerTeam: z.string().min(1),
   totalLaps: z.number().int().positive(),
@@ -53,6 +54,12 @@ const RaceStatsSchema = z.object({
 })
 
 type RaceStats = z.infer<typeof RaceStatsSchema>
+
+/**
+ * Server-side cache for successful one-liner JSON responses.
+ * Key: `${season}_${round}`. Checked before rate limiting.
+ */
+const chartOneLinersResponseCache = new Map<string, string>()
 
 /**
  * Zod schema for the Claude JSON response.
@@ -144,25 +151,30 @@ function parseClaudeJson(text: string): ChartOneLiners {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  // Rate limiting (5/hour) - shared policy with race story.
-  const ip = getClientIp(req)
-  const rl = checkRateLimit({ key: `chart_oneliners:${ip}`, limit: 20, windowMs: 3600_000 })
-  if (!rl.allowed) {
-    return res.status(429).json({ error: 'Rate limit exceeded', retryAfter: rl.retryAfterSeconds })
+  if (!process.env.GEMINI_API_KEY) {
+    console.error('[generateChartOneLiners] GEMINI_API_KEY not set in environment')
+    return res.status(500).json({
+      error: 'Server misconfiguration',
+      code: 'MISSING_GEMINI_KEY',
+    })
   }
 
-  // Validate payload.
   const parsed = RaceStatsSchema.safeParse(req.body)
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error })
   }
 
-  /**
-   * No explicit GEMINI_API_KEY check needed here.
-   * _gemini.ts validates the key at module load time and throws
-   * 'Server misconfiguration' if it is missing, which Vercel
-   * will surface as a 500 before any endpoint logic runs.
-   */
+  const cacheKey = `${parsed.data.season}_${parsed.data.round}`
+  const cachedJson = chartOneLinersResponseCache.get(cacheKey)
+  if (cachedJson) {
+    return res.status(200).json(JSON.parse(cachedJson) as ChartOneLiners)
+  }
+
+  const ip = getClientIp(req)
+  const rl = checkRateLimit({ key: `chart_oneliners:${ip}`, limit: 20, windowMs: 3600_000 })
+  if (!rl.allowed) {
+    return res.status(429).json({ error: 'Rate limit exceeded', retryAfter: rl.retryAfterSeconds })
+  }
 
   try {
     const prompt = buildOneLinerPrompt(parsed.data)
@@ -187,7 +199,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .trim()
 
     const oneLiners = parseClaudeJson(cleaned)
-
+    chartOneLinersResponseCache.set(cacheKey, JSON.stringify(oneLiners))
     return res.status(200).json(oneLiners)
   } catch (e) {
     const geminiStatus = getGeminiHttpStatus(e)

@@ -1,23 +1,35 @@
 import { cached } from './cache'
+import { getSeasonRaces } from './ergast'
 import type { CarDataSample } from '../types/openf1'
 
 const BASE = 'https://api.openf1.org/v1'
 
-/** Minimum pause between OpenF1 requests - reduces public API 429 bursts when many endpoints load at once. */
-const OPENF1_MIN_GAP_MS = 120
-
-/** Max extra attempts after HTTP 429 (each waits for Retry-After or backoff). */
-const OPENF1_MAX_429_RETRIES = 6
-
 /**
- * Single-flight queue: every OpenF1 GET waits for the previous one to finish
- * plus a short gap. Parallel callers (e.g. Promise.all) still serialize safely.
+ * OpenF1 request queue — sequential with a fixed gap after each request completes.
+ * Free tier ~4 req/s; 260ms spacing keeps us safely under the limit even when
+ * many callers enqueue work at once. Cache hits bypass the network path in
+ * `cached()` and never enter this queue.
  */
-let openF1QueueTail: Promise<void> = Promise.resolve()
+const REQUEST_DELAY_MS = 260
+let requestQueue: Promise<void> = Promise.resolve()
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
+
+/**
+ * Enqueue work so only one OpenF1 fetch runs at a time, with delay after completion.
+ */
+function queued<T>(fn: () => Promise<T>): Promise<T> {
+  const result = requestQueue.then(() => fn())
+  requestQueue = result
+    .then(() => delay(REQUEST_DELAY_MS))
+    .catch(() => delay(REQUEST_DELAY_MS))
+  return result
+}
+
+/** Max extra attempts after HTTP 429 (each waits for Retry-After or backoff). */
+const OPENF1_MAX_429_RETRIES = 6
 
 function parseRetryAfterSeconds(res: Response): number | null {
   const h = res.headers.get('retry-after')
@@ -29,23 +41,11 @@ function parseRetryAfterSeconds(res: Response): number | null {
   return null
 }
 
-function enqueueOpenF1<T>(operation: () => Promise<T>): Promise<T> {
-  const run = openF1QueueTail.then(async () => {
-    await delay(OPENF1_MIN_GAP_MS)
-    return operation()
-  })
-  openF1QueueTail = run.then(
-    () => undefined,
-    () => undefined
-  )
-  return run
-}
-
 /**
  * One JSON GET with bounded 429 handling (Retry-After or exponential backoff).
- * Does not use the generic retry helper - retries on 429 only, to avoid amplifying limits.
+ * Wrapped by `queued()` via `get()` so concurrent callers serialize.
  */
-async function fetchOpenF1Json<T>(url: string): Promise<T> {
+async function fetchOpenF1JsonOnce<T>(url: string): Promise<T> {
   let rateLimitRetries = 0
 
   for (;;) {
@@ -79,6 +79,10 @@ async function fetchOpenF1Json<T>(url: string): Promise<T> {
   }
 }
 
+function fetchOpenF1Json<T>(url: string): Promise<T> {
+  return queued(() => fetchOpenF1JsonOnce<T>(url))
+}
+
 /**
  * Generic GET for OpenF1: queued + JSON parse.
  *
@@ -87,7 +91,7 @@ async function fetchOpenF1Json<T>(url: string): Promise<T> {
  * @throws Error with status and url properties if request fails
  */
 async function get<T>(url: string): Promise<T> {
-  return enqueueOpenF1(() => fetchOpenF1Json<T>(url))
+  return fetchOpenF1Json<T>(url)
 }
 
 export const getLaps = (sessionKey: number, driverNumber: number) =>
@@ -136,6 +140,10 @@ export interface Lap {
   duration_sector_3: number | null
   is_pit_out_lap: boolean
   date_start: string
+  /** OpenF1 segment status codes per mini sector (qualifying). */
+  segments_sector_1?: number[] | null
+  segments_sector_2?: number[] | null
+  segments_sector_3?: number[] | null
 }
 
 export interface Stint {
@@ -189,6 +197,8 @@ export interface Session {
   circuit_short_name: string
   year: number
   meeting_key: number
+  /** When present, matches Ergast championship round (1-based). Prefer over array index. */
+  round_number?: number
 }
 
 /**
@@ -209,9 +219,28 @@ export async function getQualifyingSession(year: number, round: number): Promise
   const quali = all
     .filter(s => s.session_type === 'Qualifying')
     .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())
+
+  const byRound = quali.find(s => s.round_number === round)
+  if (byRound) return byRound
+
   const idx = round - 1
-  if (idx < 0 || idx >= quali.length) return null
-  return quali[idx] ?? null
+  if (idx >= 0 && idx < quali.length) return quali[idx] ?? null
+
+  const racesResp = (await getSeasonRaces(year)) as {
+    MRData?: { RaceTable?: { Races?: Array<{ round: string; date: string }> } }
+  }
+  const races = racesResp.MRData?.RaceTable?.Races
+  const ergastRace = Array.isArray(races) ? races.find(r => parseInt(r.round, 10) === round) : undefined
+  const raceDate = ergastRace?.date
+  if (!raceDate || !quali.length) return null
+
+  const t = new Date(raceDate).getTime()
+  const sorted = [...quali].sort(
+    (a, b) =>
+      Math.abs(new Date(a.date_start).getTime() - t) -
+      Math.abs(new Date(b.date_start).getTime() - t)
+  )
+  return sorted[0] ?? null
 }
 
 export async function getUpcomingWeekendSessions(): Promise<Session[]> {
@@ -304,7 +333,7 @@ export const getCarDataForLap = (
       url += `&date<${lapEnd}`
     }
 
-    return fetchOpenF1Json<CarDataSample[]>(url)
+    return get<CarDataSample[]>(url)
   })
 }
 

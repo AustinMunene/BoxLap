@@ -116,7 +116,7 @@ function generateVerdict(
   if (!winner) return ''
 
   if (paceLeader.code === winner) {
-    return `${winner} had both the fastest race pace and the result to match — a complete performance.`
+    return `${winner} had both the fastest race pace and the result to match - a complete performance.`
   }
 
   const winnerEntry = paceRanking.find(p => p.code === winner)
@@ -185,7 +185,7 @@ const verdict = computed(() =>
       <!-- Pace -->
       <div class="summary-col">
         <h4 class="summary-col-title">Race Pace</h4>
-        <p class="summary-col-sub">Median clean lap — excludes SC, pit laps</p>
+        <p class="summary-col-sub">Median clean lap - excludes SC, pit laps</p>
 
         <div v-if="paceRanking.length" class="pace-list">
           <div
@@ -222,7 +222,7 @@ const verdict = computed(() =>
       <!-- Movers -->
       <div class="summary-col">
         <h4 class="summary-col-title">Position Changes</h4>
-        <p class="summary-col-sub">Grid vs finish — who moved through the field</p>
+        <p class="summary-col-sub">Grid vs finish - who moved through the field</p>
 
         <div class="movers-list">
           <div class="movers-group">
@@ -530,6 +530,17 @@ const verdict = computed(() =>
   .summary-columns {
     grid-template-columns: 1fr;
     gap: 24px;
+  }
+}
+
+@media (max-width: 768px) {
+  .pace-row {
+    grid-template-columns: 18px 8px 36px 1fr 60px;
+    gap: 6px;
+  }
+
+  .pace-delta {
+    display: none;
   }
 }
 </style>

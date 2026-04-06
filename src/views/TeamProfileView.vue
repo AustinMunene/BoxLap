@@ -152,7 +152,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useSeasonStore } from '@/stores/seasonStore'
 import { getConstructorResults, type ErgastRace, type ErgastRaceResult } from '@/api/ergast'
 import { getTeamColor } from '@/constants/teams'
@@ -163,8 +163,20 @@ const props = defineProps<{
   name: string
 }>()
 
+const route = useRoute()
 const seasonStore = useSeasonStore()
 const router = useRouter()
+
+/** If the route ever includes `:season`, align the navbar before `watch` immediate runs. */
+{
+  const raw = route.params.season
+  if (raw != null && String(raw) !== '') {
+    const urlSeason = Number(Array.isArray(raw) ? raw[0] : raw)
+    if (Number.isFinite(urlSeason) && urlSeason !== seasonStore.selectedSeason) {
+      seasonStore.syncSelectedSeasonOnly(urlSeason)
+    }
+  }
+}
 const loading = ref(false)
 const error = ref('')
 const teamImage = ref<string | null>(null)
@@ -565,13 +577,33 @@ watch(
   font-family: 'DM Mono', monospace;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 768px) {
   .team-profile-hero {
     grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 28px 0 28px;
+  }
+
+  .team-logo-large {
+    width: 100px;
+    height: 100px;
+  }
+
+  .team-profile-hero::before {
+    display: none;
   }
 
   .contribution-cards {
     grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .contribution-pts-value {
+    font-size: 36px;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
   }
 }
 

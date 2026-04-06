@@ -84,7 +84,7 @@ const verdict = computed(() => {
     biggest.delta < 0 ? props.driverA.name_acronym : props.driverB.name_acronym
   const gap = Math.abs(ld).toFixed(3)
   const sectorGap = Math.abs(biggest.delta).toFixed(3)
-  return `${fd.name_acronym} was ${gap}s faster overall — ${gainer} gained ${sectorGap}s in ${biggest.sector}`
+  return `${fd.name_acronym} was ${gap}s faster overall. ${gainer} gained ${sectorGap}s in ${biggest.sector}`
 })
 </script>
 

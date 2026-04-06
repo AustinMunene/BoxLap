@@ -1,4 +1,5 @@
 <template>
+  <div class="chart-scroll-wrap strategy-timeline-wrap">
   <div class="strategy-timeline">
     <div v-for="driver in driverStints" :key="driver.code" class="driver-row">
       <div class="driver-label">
@@ -45,6 +46,7 @@
         >{{ n }}</span>
       </div>
     </div>
+  </div>
   </div>
 </template>
 

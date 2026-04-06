@@ -98,10 +98,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
    * rather than a generic Gemini error message.
    */
   if (!process.env.GEMINI_API_KEY) {
-    console.error('[generateTelemetryExplainer] GEMINI_API_KEY is not set')
+    console.error('[generateTelemetryExplainer] GEMINI_API_KEY not set in environment')
     return res.status(500).json({
       error: 'Server misconfiguration',
-      code: 'MISSING_API_KEY',
+      code: 'MISSING_GEMINI_KEY',
     })
   }
 

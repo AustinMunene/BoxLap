@@ -121,6 +121,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useSeasonStore } from '@/stores/seasonStore'
 import { getDriverResults, type ErgastRaceResult, type ErgastRace } from '@/api/ergast'
 import { getTeamColor } from '@/constants/teams'
@@ -132,7 +133,20 @@ const props = defineProps<{
   code: string
 }>()
 
+const route = useRoute()
 const seasonStore = useSeasonStore()
+
+/** If the route ever includes `:season`, align the navbar before `watch` immediate runs. */
+{
+  const raw = route.params.season
+  if (raw != null && String(raw) !== '') {
+    const urlSeason = Number(Array.isArray(raw) ? raw[0] : raw)
+    if (Number.isFinite(urlSeason) && urlSeason !== seasonStore.selectedSeason) {
+      seasonStore.syncSelectedSeasonOnly(urlSeason)
+    }
+  }
+}
+
 const loading = ref(false)
 const error = ref('')
 const headshot = ref<string | null>(null)
@@ -544,24 +558,59 @@ function resultRowClass(row: { position: string; status: string }) {
   color: #666;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 768px) {
   .driver-profile-hero {
     grid-template-columns: 1fr;
     align-items: start;
+    gap: 20px;
+    padding-bottom: 28px;
   }
 
   .driver-hero-photo {
     width: 100%;
-    max-width: 320px;
-    height: 280px;
+    max-width: none;
+    height: 240px;
+    object-position: top center;
+  }
+
+  .driver-profile-hero::before {
+    font-size: 120px;
+    opacity: 0.03;
   }
 
   .driver-hero-number {
-    font-size: 56px;
+    font-size: 52px;
   }
 
   .driver-hero-name {
     font-size: 32px;
+  }
+
+  .season-stats-row {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .season-stat-chip {
+    flex: 1;
+    min-width: calc(33% - 8px);
+    padding: 14px 12px;
+  }
+
+  .season-stat-value {
+    font-size: 24px;
+  }
+
+  .results-table th:nth-child(1),
+  .results-table td:nth-child(1),
+  .results-table th:nth-child(6),
+  .results-table td:nth-child(6) {
+    display: none;
+  }
+
+  .results-row td {
+    padding: 10px 10px;
+    font-size: 13px;
   }
 }
 </style>

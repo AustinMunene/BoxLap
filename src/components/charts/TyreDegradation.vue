@@ -214,7 +214,10 @@ const chartOptions = computed(() => ({
   maintainAspectRatio: false,
   interaction: { mode: 'nearest' as const, intersect: false },
   plugins: {
-    legend: { display: false },
+    legend: {
+      display: false,
+      labels: { boxWidth: 12, padding: 8, font: { size: 11 } },
+    },
     tooltip: {
       backgroundColor: '#111',
       borderColor: '#333',
@@ -236,7 +239,11 @@ const chartOptions = computed(() => ({
     x: {
       type: 'linear' as const,
       grid: { color: 'rgba(255,255,255,0.04)' },
-      ticks: { color: '#666', font: { family: 'DM Mono', size: 10 } },
+      ticks: {
+        color: '#666',
+        font: { family: 'DM Mono', size: 10 },
+        maxTicksLimit: 8,
+      },
       title: { display: true, text: 'Tyre age (laps on this tyre)', color: '#555', font: { size: 11 } },
     },
     y: {

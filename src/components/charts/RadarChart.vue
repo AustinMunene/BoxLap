@@ -54,7 +54,13 @@ const chartOptions = {
   maintainAspectRatio: false,
   plugins: {
     legend: {
-      labels: { color: '#aaa', font: { family: 'DM Mono', size: 11 } }
+      position: 'top' as const,
+      labels: {
+        color: '#aaa',
+        boxWidth: 12,
+        padding: 8,
+        font: { family: 'DM Mono', size: 11 },
+      },
     },
     tooltip: {
       backgroundColor: '#111',
@@ -68,7 +74,7 @@ const chartOptions = {
       max: 100,
       grid: { color: 'rgba(255,255,255,0.06)' },
       angleLines: { color: 'rgba(255,255,255,0.06)' },
-      pointLabels: { color: '#888', font: { size: 11 } },
+      pointLabels: { color: '#888', font: { size: 10 } },
       ticks: { display: false }
     }
   }

@@ -63,7 +63,9 @@
             <p class="next-date" v-else>{{ formatDate(seasonStore.nextRace.date) }}</p>
           </div>
           <div class="glass-card next-session-card skeleton-card" v-else-if="seasonStore.loading">
-            <SkeletonBlock height="120px" />
+            <div class="home-loader-wrap">
+              <StartLightsLoader label="Loading season data" />
+            </div>
           </div>
         </div>
       </div>
@@ -166,8 +168,9 @@
       </div>
 
       <div v-if="seasonStore.loading" class="standings-grid">
-        <div class="glass-card"><SkeletonBlock height="300px" /></div>
-        <div class="glass-card"><SkeletonBlock height="300px" /></div>
+        <div class="glass-card home-loader-card">
+          <StartLightsLoader label="Loading season data" />
+        </div>
       </div>
 
       <div v-else class="standings-grid">
@@ -226,8 +229,8 @@
         <h2 class="section-title">Season Schedule</h2>
         <span class="section-sub">{{ seasonStore.selectedSeason }}</span>
       </div>
-      <div v-if="seasonStore.loading">
-        <SkeletonBlock height="200px" />
+      <div v-if="seasonStore.loading" class="home-loader-wrap home-loader-wrap--schedule">
+        <StartLightsLoader label="Loading season data" />
       </div>
       <div v-else class="schedule-grid">
         <div
@@ -269,6 +272,7 @@ import { useSeasonStore } from '@/stores/seasonStore'
 import { getTeamColor, getCircuitFlag } from '@/constants/teams'
 import CountdownTimer from '@/components/ui/CountdownTimer.vue'
 import SkeletonBlock from '@/components/ui/SkeletonBlock.vue'
+import StartLightsLoader from '@/components/ui/StartLightsLoader.vue'
 import { getUpcomingWeekendSessions } from '@/api/openf1'
 import type { Session } from '@/api/openf1'
 import { getAllRaceResultsForSeason } from '@/api/ergast'
@@ -1124,6 +1128,27 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
   padding: 1.5rem;
 }
 
+.home-loader-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 120px;
+  padding: 1rem 0;
+}
+
+.home-loader-wrap--schedule {
+  min-height: 200px;
+}
+
+.home-loader-card {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 280px;
+  padding: 2rem;
+}
+
 @media (max-width: 900px) {
   .hero-inner {
     grid-template-columns: 1fr;
@@ -1140,6 +1165,63 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
 
   .season-numbers-strip {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-section {
+    gap: 24px;
+    padding: 40px 0 32px;
+  }
+
+  .hero-title {
+    font-size: 36px;
+  }
+
+  .hero-subtitle {
+    font-size: 15px;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  .hero-actions .btn-primary,
+  .hero-actions .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .next-session-card {
+    width: 100%;
+  }
+
+  .season-numbers-strip {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .standings-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .schedule-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .schedule-card {
+    padding: 12px;
+  }
+
+  .schedule-card .race-name {
+    font-size: 12px;
+  }
+
+  .recap-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 }
 

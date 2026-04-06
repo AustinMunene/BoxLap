@@ -89,7 +89,10 @@ const chartOptions = computed(() => ({
   maintainAspectRatio: false,
   interaction: { mode: 'index' as const, intersect: false },
   plugins: {
-    legend: { labels: { color: '#aaa' } },
+    legend: {
+      position: 'top' as const,
+      labels: { color: '#aaa', boxWidth: 12, padding: 8, font: { size: 11 } },
+    },
     tooltip: {
       backgroundColor: '#111',
       titleColor: '#fff',
@@ -104,9 +107,17 @@ const chartOptions = computed(() => ({
     }
   },
   scales: {
-    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#666' }, title: { display: true, text: 'Lap', color: '#555' } },
-    y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#666' }, title: { display: true, text: 'Gap to leader (s)', color: '#555' } }
-  }
+    x: {
+      grid: { color: 'rgba(255,255,255,0.04)' },
+      ticks: { color: '#666', font: { size: 10 }, maxTicksLimit: 8 },
+      title: { display: true, text: 'Lap', color: '#555', font: { size: 11 } },
+    },
+    y: {
+      grid: { color: 'rgba(255,255,255,0.04)' },
+      ticks: { color: '#666', font: { size: 10 } },
+      title: { display: true, text: 'Gap to leader (s)', color: '#555', font: { size: 11 } },
+    },
+  },
 }))
 </script>
 

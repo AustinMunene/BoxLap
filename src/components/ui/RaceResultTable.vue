@@ -163,4 +163,11 @@ td {
   color: #FFC906;
   font-weight: 600;
 }
+
+@media (max-width: 768px) {
+  .race-table th:nth-child(5),
+  .race-table td:nth-child(5) {
+    display: none;
+  }
+}
 </style>

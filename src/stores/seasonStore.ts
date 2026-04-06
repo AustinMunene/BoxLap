@@ -122,11 +122,21 @@ export const useSeasonStore = defineStore('season', () => {
     }
   }
 
+  /**
+   * Sets the selected season and clears cached season data immediately so the UI
+   * does not show stale standings/schedule while new data loads. Callers that
+   * need fresh Ergast data should invoke `loadCurrentSeason()` afterward.
+   */
   function setSelectedSeason(year: number) {
     if (!availableSeasons.value.includes(year)) return
     if (selectedSeason.value === year) return
     selectedSeason.value = year
-    void loadCurrentSeason()
+    schedule.value = []
+    driverStandings.value = []
+    constructorStandings.value = []
+    lastRace.value = null
+    nextRace.value = null
+    lastRaceResults.value = null
   }
 
   /** Sync navbar from route without re-fetching (caller already loaded data). */

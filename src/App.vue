@@ -1,52 +1,23 @@
 <template>
   <div class="app noise-bg">
-    <nav class="nav">
-      <div class="nav-inner">
-        <router-link to="/" class="nav-logo">
+    <nav class="nav navbar">
+      <div class="nav-inner navbar-inner">
+        <router-link to="/" class="nav-logo navbar-logo">
           <span class="logo-accent">BOX</span>LAP
         </router-link>
-        <div class="nav-links">
+
+        <div class="nav-links navbar-links" :class="{ 'navbar-links--open': menuOpen }">
           <router-link
             v-for="link in navLinks"
             :key="link.path"
             :to="link.path"
-            class="nav-link"
-            :class="{ 'nav-link-active': isNavActive(link) }"
+            class="nav-link navbar-link"
+            :class="{ 'nav-link-active': isNavActive(link), 'navbar-link--active': isNavActive(link) }"
+            @click="menuOpen = false"
           >
             {{ link.label }}
           </router-link>
-        </div>
-
-        <div class="season-selector">
-          <button
-            v-for="year in seasonStore.availableSeasons"
-            :key="year"
-            type="button"
-            class="season-pill"
-            :class="{ 'season-pill--active': seasonStore.selectedSeason === year }"
-            @click="seasonStore.setSelectedSeason(year)"
-          >
-            {{ year }}
-          </button>
-        </div>
-
-        <button class="nav-mobile-btn" @click="mobileOpen = !mobileOpen" aria-label="Menu">
-          <span></span><span></span><span></span>
-        </button>
-      </div>
-      <div class="mobile-menu" :class="{ open: mobileOpen }">
-        <router-link
-          v-for="link in navLinks"
-          :key="link.path"
-          :to="link.path"
-          class="mobile-link"
-          @click="mobileOpen = false"
-        >
-          {{ link.label }}
-        </router-link>
-        <div class="mobile-seasons">
-          <span class="mobile-seasons-label">Season</span>
-          <div class="season-selector season-selector--mobile">
+          <div class="season-selector season-selector--in-menu">
             <button
               v-for="year in seasonStore.availableSeasons"
               :key="year"
@@ -59,10 +30,36 @@
             </button>
           </div>
         </div>
+
+        <div class="season-selector season-selector--desktop">
+          <button
+            v-for="year in seasonStore.availableSeasons"
+            :key="year"
+            type="button"
+            class="season-pill"
+            :class="{ 'season-pill--active': seasonStore.selectedSeason === year }"
+            @click="onSeasonSelect(year)"
+          >
+            {{ year }}
+          </button>
+        </div>
+
+        <button
+          type="button"
+          class="hamburger"
+          :class="{ 'hamburger--open': menuOpen }"
+          aria-label="Menu"
+          :aria-expanded="menuOpen"
+          @click="menuOpen = !menuOpen"
+        >
+          <span class="hamburger-line" />
+          <span class="hamburger-line" />
+          <span class="hamburger-line" />
+        </button>
       </div>
     </nav>
 
-    <main class="main-content">
+    <main class="main-content page-content">
       <router-view v-slot="{ Component }">
         <Transition name="fade" mode="out-in">
           <component :is="Component" />
@@ -77,17 +74,48 @@
         <span class="footer-disclaimer">Not affiliated with Formula 1, FOM, or FIA.</span>
       </div>
     </footer>
+
+    <BackToTop />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useSeasonStore } from '@/stores/seasonStore'
+import { useRaceStore } from '@/stores/raceStore'
+import BackToTop from '@/components/ui/BackToTop.vue'
 
-const mobileOpen = ref(false)
+const menuOpen = ref(false)
 const route = useRoute()
+const router = useRouter()
 const seasonStore = useSeasonStore()
+const raceStore = useRaceStore()
+
+watch(
+  () => route.path,
+  () => {
+    menuOpen.value = false
+  }
+)
+
+watch(menuOpen, open => {
+  document.body.style.overflow = open ? 'hidden' : ''
+})
+
+/**
+ * When the user selects a different season, we navigate to the home page rather than
+ * staying on the current page. Race rounds, telemetry sessions, and profile context
+ * are season-specific; going home matches common F1 site behaviour and avoids stale state.
+ */
+async function onSeasonSelect(year: number) {
+  if (year === seasonStore.selectedSeason) return
+
+  seasonStore.setSelectedSeason(year)
+  raceStore.reset()
+  await seasonStore.loadCurrentSeason()
+  await router.push('/')
+}
 
 const navLinks = computed(() => [
   { path: '/', label: 'Home' },
@@ -101,9 +129,9 @@ function isNavActive(link: { path: string; telemetry?: boolean }) {
   return route.path === link.path
 }
 
-function selectSeasonMobile(year: number) {
-  seasonStore.setSelectedSeason(year)
-  mobileOpen.value = false
+async function selectSeasonMobile(year: number) {
+  await onSeasonSelect(year)
+  menuOpen.value = false
 }
 
 onMounted(() => {
@@ -151,18 +179,8 @@ onMounted(() => {
   color: #e8002d;
 }
 
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  flex: 1;
-}
-
 .nav-link {
-  padding: 0.375rem 0.875rem;
   border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 600;
   color: #888;
   text-decoration: none;
   transition:
@@ -182,7 +200,7 @@ onMounted(() => {
   background: rgba(232, 0, 45, 0.12);
 }
 
-.season-selector {
+.season-selector--desktop {
   display: flex;
   gap: 4px;
   background: rgba(255, 255, 255, 0.05);
@@ -191,25 +209,13 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.season-selector--mobile {
-  width: 100%;
+.season-selector--in-menu {
+  display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-}
-
-.mobile-seasons {
-  padding: 0.75rem 0.5rem 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.mobile-seasons-label {
-  display: block;
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: #555;
-  margin-bottom: 0.5rem;
-  text-transform: uppercase;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  padding: 8px;
 }
 
 .season-pill {
@@ -227,48 +233,6 @@ onMounted(() => {
 
 .season-pill--active {
   background: #e8002d;
-  color: #fff;
-}
-
-.nav-mobile-btn {
-  display: none;
-  flex-direction: column;
-  gap: 4px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-}
-
-.nav-mobile-btn span {
-  display: block;
-  width: 22px;
-  height: 2px;
-  background: #aaa;
-  border-radius: 2px;
-}
-
-.mobile-menu {
-  display: none;
-  flex-direction: column;
-  padding: 0.5rem 1rem 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.mobile-menu.open {
-  display: flex;
-}
-
-.mobile-link {
-  padding: 0.75rem 0.5rem;
-  color: #888;
-  text-decoration: none;
-  font-weight: 600;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  transition: color 0.15s;
-}
-
-.mobile-link:hover {
   color: #fff;
 }
 
@@ -307,24 +271,26 @@ onMounted(() => {
   color: #444;
 }
 
-@media (max-width: 900px) {
-  .season-selector:not(.season-selector--mobile) {
-    order: 3;
-    width: 100%;
-    justify-content: center;
+@media (min-width: 769px) {
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 1;
+  }
+
+  .nav-link {
+    padding: 0.375rem 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 600;
   }
 }
 
-@media (max-width: 768px) {
-  .nav-links {
-    display: none;
-  }
-  .season-selector:not(.season-selector--mobile) {
-    display: none;
-  }
-  .nav-mobile-btn {
-    display: flex;
-    margin-left: auto;
+@media (max-width: 900px) {
+  .season-selector--desktop {
+    order: 3;
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

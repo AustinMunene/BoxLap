@@ -124,6 +124,7 @@ const stats = computed(() => [
 </script>
 
 <template>
+  <div class="chart-scroll-wrap telemetry-stats-scroll">
   <div class="telemetry-stats">
     <h3 class="stats-title">What the data shows</h3>
     <p class="stats-subtitle">Computed directly from telemetry: no AI needed</p>
@@ -149,6 +150,7 @@ const stats = computed(() => [
         {{ stat.delta }}
       </span>
     </div>
+  </div>
   </div>
 </template>
 
@@ -251,5 +253,22 @@ const stats = computed(() => [
 
 .stat-delta--positive {
   color: #00c853;
+}
+
+@media (max-width: 768px) {
+  .telemetry-stats {
+    overflow-x: auto;
+  }
+
+  .stats-header-row,
+  .stat-row {
+    grid-template-columns: 1fr 80px 80px 100px;
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  .stat-explanation {
+    display: none;
+  }
 }
 </style>

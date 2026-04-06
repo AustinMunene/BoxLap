@@ -165,7 +165,10 @@ const chartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
-    legend: { display: false },
+    legend: {
+      display: false,
+      labels: { boxWidth: 12, padding: 8, font: { size: 11 } },
+    },
     tooltip: {
       backgroundColor: '#111',
       borderColor: '#333',
@@ -185,13 +188,13 @@ const chartOptions = computed(() => ({
     x: {
       type: 'linear' as const,
       grid: { color: 'rgba(255,255,255,0.04)' },
-      ticks: { color: '#666', font: { family: 'DM Mono', size: 10 } },
+      ticks: { color: '#666', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 8 },
       title: { display: true, text: 'Qualifying pace (fastest lap, s)', color: '#555', font: { size: 11 } },
     },
     y: {
       type: 'linear' as const,
       grid: { color: 'rgba(255,255,255,0.04)' },
-      ticks: { color: '#666', font: { family: 'DM Mono', size: 10 } },
+      ticks: { color: '#666', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 8 },
       title: { display: true, text: 'Race pace (median clean lap, s)', color: '#555', font: { size: 11 } },
     },
   },
