@@ -585,8 +585,10 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
 
 .hero-subtitle {
   font-size: 17px;
-  color: #666;
-  line-height: 1.6;
+  font-weight: 500;
+  color: #c8c8c8;
+  line-height: 1.65;
+  letter-spacing: 0.01em;
   margin-bottom: 28px;
   max-width: 520px;
 }
