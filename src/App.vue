@@ -68,7 +68,7 @@
     </main>
 
     <footer class="footer">
-      <div class="footer-inner">
+      <div class="footer-inner container">
         <span class="footer-logo"><span class="logo-accent">BOX</span>LAP</span>
         <span class="footer-desc">F1 Fan Analytics - Data from OpenF1 & Ergast API</span>
         <span class="footer-disclaimer">Not affiliated with Formula 1, FOM, or FIA.</span>
@@ -156,13 +156,7 @@ onMounted(() => {
 }
 
 .nav-inner {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
   min-height: 60px;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
   flex-wrap: wrap;
 }
 
@@ -246,8 +240,6 @@ onMounted(() => {
 }
 
 .footer-inner {
-  max-width: 1280px;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;

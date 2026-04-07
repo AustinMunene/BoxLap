@@ -60,60 +60,65 @@
       <div v-else-if="error" class="error-banner glass-card">{{ error }}</div>
 
       <template v-else>
-        <section v-if="teammateStanding && h2h" class="section">
-          <h2 class="section-title">vs teammate</h2>
-          <div class="glass-card glass-card--static h2h-card">
-            <div class="h2h-row">
-              <span class="font-data code" :style="{ color: teamColor }">{{ driverCode }}</span>
-              <span class="h2h-mid font-data">{{ h2h.selfWins }}–{{ h2h.mateWins }}</span>
-              <span class="font-data code" :style="{ color: getTeamColor(teammateStanding.Constructors[0]?.name || '') }">
-                {{ teammateStanding.Driver.code }}
-              </span>
+        <div
+          class="profile-lower"
+          :class="{ 'profile-lower--split': teammateStanding && h2h }"
+        >
+          <section class="section profile-lower-main">
+            <h2 class="section-title">Race results</h2>
+            <div class="glass-card glass-card--static table-wrap">
+              <table class="results-table">
+                <thead>
+                  <tr>
+                    <th>Rnd</th>
+                    <th>Grand Prix</th>
+                    <th>Pos</th>
+                    <th>Pts</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in resultRows"
+                    :key="row.round"
+                    class="results-row"
+                    :class="resultRowClass(row)"
+                  >
+                    <td class="font-data">{{ row.round }}</td>
+                    <td>
+                      <router-link
+                        v-if="row.canLink"
+                        :to="`/race/${seasonStore.selectedSeason}/${row.round}`"
+                        class="gp-link"
+                      >
+                        {{ row.raceName }}
+                      </router-link>
+                      <span v-else>{{ row.raceName }}</span>
+                    </td>
+                    <td class="font-data">{{ row.position }}</td>
+                    <td class="font-data">{{ row.points }}</td>
+                    <td class="status-cell">{{ row.status }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-if="!resultRows.length" class="empty">No race results for this season.</div>
             </div>
-            <p class="h2h-note">Head-to-head on races where both drivers classified (finished).</p>
-          </div>
-        </section>
+          </section>
 
-        <section class="section">
-          <h2 class="section-title">Race results</h2>
-          <div class="glass-card glass-card--static table-wrap">
-            <table class="results-table">
-              <thead>
-                <tr>
-                  <th>Rnd</th>
-                  <th>Grand Prix</th>
-                  <th>Pos</th>
-                  <th>Pts</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="row in resultRows"
-                  :key="row.round"
-                  class="results-row"
-                  :class="resultRowClass(row)"
-                >
-                  <td class="font-data">{{ row.round }}</td>
-                  <td>
-                    <router-link
-                      v-if="row.canLink"
-                      :to="`/race/${seasonStore.selectedSeason}/${row.round}`"
-                      class="gp-link"
-                    >
-                      {{ row.raceName }}
-                    </router-link>
-                    <span v-else>{{ row.raceName }}</span>
-                  </td>
-                  <td class="font-data">{{ row.position }}</td>
-                  <td class="font-data">{{ row.points }}</td>
-                  <td class="status-cell">{{ row.status }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-if="!resultRows.length" class="empty">No race results for this season.</div>
-          </div>
-        </section>
+          <section v-if="teammateStanding && h2h" class="section profile-lower-side">
+            <h2 class="section-title">vs teammate</h2>
+            <div class="glass-card glass-card--static h2h-card">
+              <div class="h2h-row">
+                <span class="font-data code" :style="{ color: teamColor }">{{ driverCode }}</span>
+                <span class="h2h-mid font-data">{{ h2h.selfWins }}–{{ h2h.mateWins }}</span>
+                <span class="font-data code" :style="{ color: getTeamColor(teammateStanding.Constructors[0]?.name || '') }">
+                  {{ teammateStanding.Driver.code }}
+                </span>
+              </div>
+              <p class="h2h-note">Head-to-head on races where both drivers classified (finished).</p>
+            </div>
+          </section>
+        </div>
       </template>
     </div>
   </div>
@@ -279,11 +284,6 @@ function resultRowClass(row: { position: string; status: string }) {
   padding-bottom: 4rem;
 }
 
-.container {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-}
 
 .back-link {
   display: inline-block;
@@ -442,6 +442,17 @@ function resultRowClass(row: { position: string; status: string }) {
 
 .section {
   margin-top: 2.5rem;
+}
+
+.profile-lower {
+  margin-top: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.profile-lower .section {
+  margin-top: 0;
 }
 
 .section-title {
@@ -611,6 +622,47 @@ function resultRowClass(row: { position: string; status: string }) {
   .results-row td {
     padding: 10px 10px;
     font-size: 13px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .driver-profile-hero {
+    grid-template-columns: 320px 1fr;
+    gap: 64px;
+  }
+
+  .driver-hero-photo {
+    width: 320px;
+    height: 380px;
+  }
+
+  .driver-hero-number {
+    font-size: 100px;
+  }
+
+  .driver-hero-name {
+    font-size: 56px;
+  }
+
+  .season-stats-row {
+    flex-wrap: nowrap;
+  }
+
+  .season-stat-chip {
+    min-width: 120px;
+  }
+
+  .profile-lower--split {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 32px;
+    align-items: start;
+  }
+}
+
+@media (min-width: 1600px) {
+  .driver-profile-hero {
+    grid-template-columns: 360px 1fr;
   }
 }
 </style>

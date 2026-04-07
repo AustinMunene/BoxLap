@@ -271,4 +271,16 @@ const stats = computed(() => [
     display: none;
   }
 }
+
+@media (min-width: 1280px) {
+  .stats-header-row,
+  .stat-row {
+    grid-template-columns: 1fr 140px 140px 200px;
+    gap: 20px;
+  }
+
+  .stat-explanation {
+    display: block;
+  }
+}
 </style>

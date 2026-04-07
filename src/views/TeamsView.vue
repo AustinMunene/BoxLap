@@ -326,11 +326,6 @@ watch(
   padding-bottom: 4rem;
 }
 
-.container {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-}
 
 .page-header {
   padding: 2.5rem 0 2rem;
@@ -657,6 +652,27 @@ watch(
   .contrib-pts,
   .contrib-pct {
     font-size: 11px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .team-accordion {
+    grid-template-columns: 80px 320px 1fr 40px;
+    gap: 32px;
+    padding: 24px 32px;
+  }
+
+  .team-acc-name {
+    font-size: 20px;
+  }
+
+  .team-acc-logo {
+    width: 64px;
+    height: 64px;
+  }
+
+  .contrib-bar-track {
+    min-width: 200px;
   }
 }
 </style>

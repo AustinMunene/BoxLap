@@ -98,7 +98,12 @@
         </router-link>
       </div>
 
-      <div class="recap-grid">
+      <div
+        class="recap-grid last-race-grid"
+        :class="{
+          'last-race-grid--has-snapshot': isLargeScreen && seasonStore.driverStandings.length > 0,
+        }"
+      >
         <!-- Podium -->
         <div class="glass-card glass-card--static podium-wrap" v-if="lastRace">
           <h3 class="card-title">Podium</h3>
@@ -156,6 +161,27 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <div
+          v-if="isLargeScreen && seasonStore.driverStandings.length"
+          class="championship-snapshot glass-card glass-card--static"
+        >
+          <h4 class="snapshot-title">Championship after race</h4>
+          <div
+            v-for="(entry, i) in seasonStore.driverStandings.slice(0, 5)"
+            :key="entry.Driver.driverId"
+            class="snapshot-row"
+          >
+            <span class="snapshot-pos">{{ i + 1 }}</span>
+            <div
+              class="snapshot-dot"
+              :style="{ background: getTeamColor(entry.Constructors[0]?.name || '') }"
+            />
+            <span class="snapshot-code">{{ entry.Driver.code }}</span>
+            <span class="snapshot-pts">{{ entry.points }}</span>
+          </div>
+          <router-link to="/drivers" class="snapshot-more"> Full standings → </router-link>
         </div>
       </div>
     </section>
@@ -266,7 +292,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSeasonStore } from '@/stores/seasonStore'
 import { getTeamColor, getCircuitFlag } from '@/constants/teams'
@@ -282,6 +308,21 @@ import { getRaceAvailability } from '@/utils/raceAvailability'
 const router = useRouter()
 const seasonStore = useSeasonStore()
 const weekendSessions = ref<Session[]>([])
+
+const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280)
+
+/**
+ * Syncs `windowWidth` with the browser viewport for responsive layout breakpoints.
+ *
+ * Data source: `window.innerWidth` (browser only).
+ *
+ * Returns: void. Used so the last-race grid can show a third column at ≥1280px without extra API calls.
+ */
+function onWindowResize() {
+  windowWidth.value = window.innerWidth
+}
+
+const isLargeScreen = computed(() => windowWidth.value >= 1280)
 
 const allSeasonRacesPayload = ref<{
   MRData?: { RaceTable?: { Races: Array<{ round: string; Results?: ErgastRaceResult[] }> } }
@@ -373,7 +414,12 @@ const leaderTeamColor = computed(() =>
 )
 
 onMounted(async () => {
+  window.addEventListener('resize', onWindowResize, { passive: true })
   weekendSessions.value = await getUpcomingWeekendSessions()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', onWindowResize)
 })
 
 const lastRace = computed(() => seasonStore.lastRaceResults)
@@ -483,12 +529,6 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
   padding-bottom: 4rem;
 }
 
-.container {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-}
-
 /* Hero */
 .hero-section {
   position: relative;
@@ -564,7 +604,11 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
 }
 
 .leader-label {
-  color: #555;
+  color: #d4d4d4;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .leader-name {
@@ -792,6 +836,65 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
+}
+
+.championship-snapshot {
+  padding: 20px;
+}
+
+.snapshot-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 16px;
+}
+
+.snapshot-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.snapshot-pos {
+  font-size: 12px;
+  color: #444;
+  width: 16px;
+  font-family: 'DM Mono', monospace;
+}
+
+.snapshot-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.snapshot-code {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ccc;
+  font-family: 'DM Mono', monospace;
+  flex: 1;
+}
+
+.snapshot-pts {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  font-family: 'DM Mono', monospace;
+}
+
+.snapshot-more {
+  display: block;
+  margin-top: 14px;
+  font-size: 12px;
+  color: #e8002d;
+  text-decoration: none;
+  font-weight: 700;
 }
 
 .podium-wrap,
@@ -1236,6 +1339,79 @@ function sessionStatus(session: Session): 'past' | 'next' | 'upcoming' {
 
   .season-numbers-strip {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 1280px) {
+  .hero-section {
+    padding: 100px 0 80px;
+  }
+
+  .hero-inner {
+    grid-template-columns: 1fr 480px;
+    gap: 80px;
+  }
+
+  .hero-title {
+    font-size: 72px;
+  }
+
+  .hero-subtitle {
+    font-size: 18px;
+    max-width: 520px;
+  }
+
+  .season-numbers-strip {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin: 60px 0;
+  }
+
+  .number-chip {
+    padding: 28px 32px;
+  }
+
+  .number-chip-value {
+    font-size: 40px;
+  }
+
+  .last-race-grid--has-snapshot {
+    grid-template-columns: 1fr 1fr 340px;
+    gap: 20px;
+  }
+
+  .schedule-grid {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (max-width: 1279px) {
+  .last-race-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 1600px) {
+  .hero-section {
+    padding: 120px 0 100px;
+  }
+
+  .hero-inner {
+    grid-template-columns: 1fr 520px;
+    gap: 120px;
+  }
+
+  .hero-title {
+    font-size: 84px;
+  }
+
+  .next-session-card {
+    padding: 36px;
+  }
+
+  .schedule-grid {
+    grid-template-columns: repeat(8, 1fr);
   }
 }
 </style>

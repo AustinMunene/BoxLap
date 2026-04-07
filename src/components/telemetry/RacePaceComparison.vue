@@ -532,4 +532,16 @@ const chartOptions = computed(
     height: 180px;
   }
 }
+
+@media (min-width: 1280px) {
+  .rpc-chart-wrap {
+    height: 320px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .rpc-chart-wrap {
+    height: 380px;
+  }
+}
 </style>

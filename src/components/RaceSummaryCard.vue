@@ -543,4 +543,23 @@ const verdict = computed(() =>
     display: none;
   }
 }
+
+@media (min-width: 1280px) {
+  .race-summary {
+    padding: 36px 40px;
+  }
+
+  .summary-columns {
+    gap: 48px;
+  }
+
+  .pace-row {
+    grid-template-columns: 18px 8px 40px 1fr 80px 64px;
+    gap: 12px;
+  }
+
+  .pace-delta {
+    display: block;
+  }
+}
 </style>

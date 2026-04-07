@@ -301,11 +301,6 @@ watch(
   padding-bottom: 4rem;
 }
 
-.container {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-}
 
 .back-link {
   display: inline-block;

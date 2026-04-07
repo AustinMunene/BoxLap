@@ -61,7 +61,7 @@
             />
 
             <!-- Podium -->
-            <div class="overview-grid">
+            <div class="overview-grid overview-lower">
               <div class="glass-card podium-card">
                 <div class="card-title-label">Podium</div>
                 <div class="podium">
@@ -1244,12 +1244,6 @@ onMounted(async () => {
   box-shadow: 0 0 8px rgba(232, 0, 45, 0.6);
 }
 
-.container {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-}
-
 .race-header {
   padding: 2rem 0 1.5rem;
 }
@@ -2045,6 +2039,30 @@ onMounted(async () => {
 
   .insights-grid-detailed {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 1280px) {
+  .race-tabs .tab-btn {
+    padding: 14px 28px;
+    font-size: 14px;
+  }
+
+  .overview-lower {
+    grid-template-columns: 320px 1fr;
+    gap: 32px;
+  }
+
+  .quali-row {
+    display: grid;
+    grid-template-columns: 40px 4px 1fr 120px 120px 120px 100px 90px;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .quali-time--q1,
+  .quali-time--q2 {
+    display: block;
   }
 }
 </style>

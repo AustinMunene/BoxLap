@@ -340,11 +340,6 @@ watch(
   padding-bottom: 4rem;
 }
 
-.container {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-}
 
 .page-header {
   padding: 2.5rem 0 2rem;
@@ -736,6 +731,27 @@ watch(
   .drivers-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 8px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .drivers-grid {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 20px;
+  }
+
+  .driver-card {
+    min-height: 300px;
+  }
+
+  .driver-card-photo-wrap {
+    height: 200px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .drivers-grid {
+    grid-template-columns: repeat(6, 1fr);
   }
 }
 </style>

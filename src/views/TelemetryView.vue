@@ -410,6 +410,7 @@ function onLapChange() {
         </div>
       </div>
 
+      <div class="telemetry-selectors">
       <!-- STEP 1 -->
       <div class="selector-section" :class="{ 'selector-section--inactive': currentStep > 1 }">
         <label class="selector-label">
@@ -515,24 +516,6 @@ function onLapChange() {
         </div>
       </Transition>
 
-      <Transition name="fade-slide">
-        <RacePaceComparison
-          v-if="
-            driversConfirmed &&
-            lapsA.length > 0 &&
-            lapsB.length > 0 &&
-            racePaceDriverA &&
-            racePaceDriverB
-          "
-          :laps-a="lapsA"
-          :laps-b="lapsB"
-          :driver-a="racePaceDriverA"
-          :driver-b="racePaceDriverB"
-          :selected-lap="selectedLap"
-          @lap-selected="onLapSelectedFromChart"
-        />
-      </Transition>
-
       <!-- STEP 3 -->
       <Transition name="fade-slide">
         <div v-if="driversConfirmed" class="selector-section">
@@ -567,6 +550,25 @@ function onLapChange() {
             {{ isLoadingTelemetry ? 'Loading telemetry…' : 'Generate telemetry' }}
           </button>
         </div>
+      </Transition>
+      </div>
+
+      <Transition name="fade-slide">
+        <RacePaceComparison
+          v-if="
+            driversConfirmed &&
+            lapsA.length > 0 &&
+            lapsB.length > 0 &&
+            racePaceDriverA &&
+            racePaceDriverB
+          "
+          :laps-a="lapsA"
+          :laps-b="lapsB"
+          :driver-a="racePaceDriverA"
+          :driver-b="racePaceDriverB"
+          :selected-lap="selectedLap"
+          @lap-selected="onLapSelectedFromChart"
+        />
       </Transition>
 
       <Transition name="fade">
@@ -658,11 +660,6 @@ function onLapChange() {
   }
 }
 
-.container {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-}
 
 .page-header {
   margin-bottom: 28px;
@@ -749,6 +746,12 @@ function onLapChange() {
 
 .selector-section--inactive {
   opacity: 0.6;
+}
+
+.telemetry-selectors {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .selector-label {
@@ -1116,6 +1119,24 @@ function onLapChange() {
 
   .telemetry-loading {
     padding: 40px 16px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .telemetry-selectors {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  .telemetry-selectors .selector-section {
+    margin-bottom: 0;
+  }
+
+  .charts-section :deep(.chart-wrapper) {
+    height: 300px;
+    min-height: 300px;
   }
 }
 </style>

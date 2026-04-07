@@ -65,6 +65,92 @@ button,
   }
 }
 
+/* ─── CONTAINER SYSTEM ────────────────────────────────────────── */
+
+.container {
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 var(--page-padding);
+}
+
+@media (min-width: 1024px) {
+  .container {
+    padding: 0 48px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .container {
+    padding: 0 64px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .container {
+    max-width: 1600px;
+    padding: 0 80px;
+  }
+}
+
+@media (min-width: 1920px) {
+  .container {
+    max-width: 1800px;
+    padding: 0 80px;
+  }
+}
+
+/* Navbar: full width with fluid padding; cap aligns with container on ultra-wide */
+.navbar-inner {
+  max-width: none;
+  padding: 0 64px;
+  display: flex;
+  align-items: center;
+  gap: 40px;
+}
+
+@media (min-width: 1600px) {
+  .navbar-inner {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 0 80px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .navbar-inner {
+    padding: 0 24px;
+  }
+}
+
+@media (min-width: 1920px) {
+  .navbar-inner {
+    max-width: 1800px;
+  }
+}
+
+@media (min-width: 1440px) {
+  body {
+    font-size: 16px;
+  }
+
+  .section-title {
+    font-size: 28px;
+  }
+
+  p,
+  td,
+  .body-text {
+    font-size: 15px;
+    line-height: 1.65;
+  }
+}
+
+@media (min-width: 1920px) {
+  body {
+    font-size: 17px;
+  }
+}
+
 /* Prevent iOS zoom on input focus */
 input[type='number'],
 input[type='text'],
